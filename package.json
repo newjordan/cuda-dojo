@@ -1,0 +1,20 @@
+{
+  "name": "cuda-dojo",
+  "version": "0.1.0",
+  "description": "Public GPU chess research repo focused on CUDA engine architecture, oracle baselines, and training loops.",
+  "type": "module",
+  "private": false,
+  "scripts": {
+    "oracle:sigma": "make -C cuda oracle_sigma_smoke",
+    "oracle:probe": "make -C cuda oracle_sigma_probe"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/newjordan/cuda-dojo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/newjordan/cuda-dojo/issues"
+  },
+  "homepage": "https://github.com/newjordan/cuda-dojo#readme",
+  "license": "ISC"
+}

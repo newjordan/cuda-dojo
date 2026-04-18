@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dojo.calibration.v1",
+  "title": "Dojo Calibration Profile",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "fighter",
+    "temperament",
+    "categoryWeights",
+    "bands"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "dojo.calibration.v1"
+    },
+    "generatedAt": {
+      "type": "string"
+    },
+    "generatedFrom": {
+      "type": "string"
+    },
+    "sourceVariant": {
+      "type": "string"
+    },
+    "artifactVariant": {
+      "type": "string"
+    },
+    "fighter": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "object",
+      "required": ["knobCount", "surfaceCount"],
+      "properties": {
+        "knobCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "surfaceCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "temperament": {
+      "type": "object",
+      "required": ["primary", "scores"],
+      "properties": {
+        "primary": {
+          "enum": ["aggressive", "defensive", "balanced", "opportunistic"]
+        },
+        "scores": {
+          "type": "object",
+          "required": ["aggressive", "defensive", "balanced", "opportunistic"],
+          "properties": {
+            "aggressive": { "type": "number", "minimum": 0, "maximum": 100 },
+            "defensive": { "type": "number", "minimum": 0, "maximum": 100 },
+            "balanced": { "type": "number", "minimum": 0, "maximum": 100 },
+            "opportunistic": { "type": "number", "minimum": 0, "maximum": 100 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "categoryWeights": {
+      "type": "object",
+      "required": ["aggression", "defense", "search", "time", "temperature", "adaptation", "knowledge", "balance"],
+      "properties": {
+        "aggression": { "type": "number", "minimum": 0, "maximum": 1 },
+        "defense": { "type": "number", "minimum": 0, "maximum": 1 },
+        "search": { "type": "number", "minimum": 0, "maximum": 1 },
+        "time": { "type": "number", "minimum": 0, "maximum": 1 },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 1 },
+        "adaptation": { "type": "number", "minimum": 0, "maximum": 1 },
+        "knowledge": { "type": "number", "minimum": 0, "maximum": 1 },
+        "balance": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "bands": {
+      "type": "object",
+      "required": [
+        "heat",
+        "stability",
+        "timePosture",
+        "searchPosture",
+        "tacticalOpportunism",
+        "recoveryDiscipline",
+        "knowledgeReliance",
+        "endgameDiscipline"
+      ],
+      "properties": {
+        "heat": { "$ref": "#/$defs/band" },
+        "stability": { "$ref": "#/$defs/band" },
+        "timePosture": { "$ref": "#/$defs/band" },
+        "searchPosture": { "$ref": "#/$defs/band" },
+        "tacticalOpportunism": { "$ref": "#/$defs/band" },
+        "recoveryDiscipline": { "$ref": "#/$defs/band" },
+        "knowledgeReliance": { "$ref": "#/$defs/band" },
+        "endgameDiscipline": { "$ref": "#/$defs/band" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "band": {
+      "type": "object",
+      "required": ["value", "label", "description", "sourceCategories"],
+      "properties": {
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "sourceCategories": {
+          "type": "array",
+          "items": {
+            "enum": ["aggression", "defense", "search", "time", "temperature", "adaptation", "knowledge", "balance"]
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

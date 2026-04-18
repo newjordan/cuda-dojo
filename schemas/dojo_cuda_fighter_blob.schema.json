@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://theforge.local/schemas/dojo_cuda_fighter_blob.schema.json",
+  "title": "Dojo CUDA Fighter Blob",
+  "description": "CUDA-consumable projection of the canonical dojo fighter IR.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "abiVersion",
+    "sourceIr",
+    "hashes",
+    "fighter",
+    "calibration",
+    "surfaces",
+    "knobTable",
+    "flatKnobs",
+    "categoryIndex",
+    "temperament",
+    "legacy44Pack"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": "dojo.cuda_fighter_blob.v1" },
+    "abiVersion": { "const": "dojo.cuda.abi.v1" },
+    "sourceIr": { "type": "string" },
+    "hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["irSha256", "sourceSha256", "artifactSha256"],
+      "properties": {
+        "irSha256": { "type": "string" },
+        "sourceSha256": { "type": "string" },
+        "artifactSha256": { "type": "string" }
+      }
+    },
+    "fighter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slug", "temperament", "surfaceCount", "knobCount"],
+      "properties": {
+        "slug": { "type": "string" },
+        "temperament": { "type": ["string", "null"] },
+        "surfaceCount": { "type": "integer", "minimum": 0 },
+        "knobCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "calibration": { "type": "object" },
+    "surfaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "symbolName", "offset", "count"],
+        "properties": {
+          "name": { "type": "string" },
+          "symbolName": { "type": "string" },
+          "offset": { "type": "integer", "minimum": 0 },
+          "count": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "flatKnobs": {
+      "type": "array",
+      "items": { "type": "number" }
+    },
+    "knobTable": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "index",
+          "surface",
+          "surfaceName",
+          "path",
+          "fullPath",
+          "alias",
+          "category",
+          "temperament",
+          "value"
+        ],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0 },
+          "surface": { "type": "string" },
+          "surfaceName": { "type": "string" },
+          "path": { "type": ["string", "null"] },
+          "fullPath": { "type": "string" },
+          "alias": { "type": ["string", "null"] },
+          "category": { "type": "string" },
+          "temperament": { "type": "string" },
+          "value": { "type": "number" }
+        }
+      }
+    },
+    "categoryIndex": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "temperament": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "legacy44Pack": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["enabled", "mode", "sourceKnobCount", "selectedIndices", "paths", "values", "padded"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "mode": { "type": "string" },
+        "sourceKnobCount": { "type": "integer", "minimum": 0 },
+        "selectedIndices": {
+          "type": "array",
+          "items": {
+            "type": ["integer", "null"],
+            "minimum": 0
+          }
+        },
+        "paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "values": {
+          "type": "array",
+          "items": { "type": "number" }
+        },
+        "padded": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

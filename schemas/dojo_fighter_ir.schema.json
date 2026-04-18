@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://theforge.local/schemas/dojo_fighter_ir.schema.json",
+  "title": "Dojo Fighter IR",
+  "description": "Canonical intermediate representation for CPU/GPU dojo conversion. This is the ABI boundary between fighter source, standalone artifact, and CUDA dojo ingestion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "abiVersion",
+    "generatedAt",
+    "fighter",
+    "files",
+    "hashes",
+    "summary",
+    "calibration",
+    "gpu",
+    "surfaces"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "dojo.fighter_ir.v1"
+    },
+    "abiVersion": {
+      "const": "dojo.cuda.abi.v1"
+    },
+    "generatedAt": {
+      "type": "string"
+    },
+    "fighter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slug",
+        "sourceName",
+        "originalInput",
+        "standaloneArtifact",
+        "ioContract"
+      ],
+      "properties": {
+        "slug": { "type": "string" },
+        "sourceName": { "type": "string" },
+        "originalInput": { "type": "string" },
+        "standaloneArtifact": { "type": "boolean" },
+        "ioContract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["stdin", "stdout"],
+          "properties": {
+            "stdin": { "type": "string" },
+            "stdout": { "type": "string" }
+          }
+        }
+      }
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["foreign", "source", "artifact", "manifest", "calibration", "ir", "cudaBlob", "cudaHeader"],
+      "properties": {
+        "foreign": { "type": "string" },
+        "source": { "type": "string" },
+        "artifact": { "type": "string" },
+        "manifest": { "type": "string" },
+        "calibration": { "type": "string" },
+        "ir": { "type": "string" },
+        "cudaBlob": { "type": "string" },
+        "cudaHeader": { "type": "string" }
+      }
+    },
+    "hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputSha256", "sourceSha256", "artifactSha256"],
+      "properties": {
+        "inputSha256": { "type": "string" },
+        "sourceSha256": { "type": "string" },
+        "artifactSha256": { "type": "string" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surfaceCount", "knobCount", "temperament"],
+      "properties": {
+        "surfaceCount": { "type": "integer", "minimum": 0 },
+        "knobCount": { "type": "integer", "minimum": 0 },
+        "temperament": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "calibration": {
+      "type": "object"
+    },
+    "crawler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "predictorVersion",
+        "primaryProfile",
+        "candidateProfiles",
+        "layerPrediction",
+        "batteryHints",
+        "notes"
+      ],
+      "properties": {
+        "predictorVersion": { "type": "string" },
+        "primaryProfile": { "type": "string" },
+        "candidateProfiles": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "role", "score", "batteryProfile"],
+            "properties": {
+              "name": { "type": "string" },
+              "role": { "type": "string" },
+              "score": { "type": "number" },
+              "batteryProfile": { "type": "string" }
+            }
+          }
+        },
+        "layerPrediction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "flatShare",
+            "crawlerShare",
+            "loopCount",
+            "recurrenceStartFraction",
+            "parallelResidualStartFraction",
+            "qkGainHint",
+            "xsaCoverageHint"
+          ],
+          "properties": {
+            "flatShare": { "type": "number", "minimum": 0, "maximum": 1 },
+            "crawlerShare": { "type": "number", "minimum": 0, "maximum": 1 },
+            "loopCount": { "type": "integer", "minimum": 1, "maximum": 8 },
+            "recurrenceStartFraction": { "type": "number", "minimum": 0, "maximum": 1 },
+            "parallelResidualStartFraction": { "type": "number", "minimum": 0, "maximum": 1 },
+            "qkGainHint": { "type": "number", "minimum": 0, "maximum": 16 },
+            "xsaCoverageHint": {
+              "type": "string",
+              "enum": ["deep_only", "flat_plus_crawler", "all_layers"]
+            },
+            "layerDepthSchedule": {
+              "type": "array",
+              "items": { "type": "number", "minimum": 0, "maximum": 1 }
+            },
+            "layerTemperatureSchedule": {
+              "type": "array",
+              "items": { "type": "number" }
+            },
+            "depthSource": {
+              "type": "string",
+              "enum": ["derived", "fighter_surface", "mixed"]
+            },
+            "temperatureSource": {
+              "type": "string",
+              "enum": ["derived", "fighter_surface", "mixed"]
+            }
+          }
+        },
+        "mixedIntHints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "condenseLongHorizon": { "type": "boolean" },
+            "recursiveLayerIndices": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 0 }
+            },
+            "bitWidthByLayer": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 2, "maximum": 16 }
+            },
+            "notes": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "batteryHints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["primary", "secondary", "phaseBias"],
+          "properties": {
+            "primary": { "type": "string" },
+            "secondary": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "phaseBias": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "gpu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eligible", "target", "notes"],
+      "properties": {
+        "eligible": { "type": "boolean" },
+        "target": { "type": "string" },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "surfaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "symbolName", "kind", "numericLeafCount", "value"],
+        "properties": {
+          "name": { "type": "string" },
+          "symbolName": { "type": "string" },
+          "kind": { "type": "string" },
+          "numericLeafCount": { "type": "integer", "minimum": 1 },
+          "value": {}
+        }
+      }
+    }
+  }
+}

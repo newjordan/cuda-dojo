@@ -1,0 +1,79 @@
+{
+  "kind": "crawler_purpose_profiles",
+  "source_repo": "/home/frosty40/sota_crawler",
+  "profiles": [
+    {
+      "name": "beacon_anchor",
+      "role": "beacon",
+      "runner_mode": "script",
+      "runner_path": "/home/frosty40/sota_crawler/crawler/TON-E/run_litecrawler_local_8k.py",
+      "battery_profile": "launch_fingerprint",
+      "description": "Stable anchor used to detect drift and keep a known-good local crawler shape alive.",
+      "evidence": [
+        "/home/frosty40/sota_crawler/crawler/TON-E/run_litecrawler_local_8k.py",
+        "/home/frosty40/sota_crawler/crawler/TON-E/README.md"
+      ]
+    },
+    {
+      "name": "explorer_vortex",
+      "role": "explorer",
+      "runner_mode": "script",
+      "runner_path": "/home/frosty40/sota_crawler/crawler/TON-E/run_vortex_gate.py",
+      "battery_profile": "novelty_gate",
+      "description": "Risk-on runner for architectural novelty. Useful for probing whether a weird direction deserves budget.",
+      "evidence": [
+        "/home/frosty40/sota_crawler/crawler/TON-E/run_vortex_gate.py",
+        "/home/frosty40/sota_crawler/README.md"
+      ]
+    },
+    {
+      "name": "recur_quality_line",
+      "role": "explorer",
+      "runner_mode": "env_bundle",
+      "runner_path": "/home/frosty40/sota_crawler/crawler/TON-E/train_gpt.py",
+      "battery_profile": "architecture_probe",
+      "description": "Recurrence-heavy quality line based on the strongest SP8192 records and TON-E rhythm knobs.",
+      "evidence": [
+        "/home/frosty40/sota_crawler/records/track_10min_16mb/2026-04-09_SP8192_3LayerRecur_ParResid_QK525_LegalTTT/README.md",
+        "/home/frosty40/sota_crawler/records/track_10min_16mb/2026-04-08_SP8192_ParallelResid_ScoreFirstTTT/README.md",
+        "/home/frosty40/sota_crawler/crawler/TON-E/README.md"
+      ]
+    },
+    {
+      "name": "depth_split_line",
+      "role": "explorer",
+      "runner_mode": "env_bundle",
+      "runner_path": "/home/frosty40/sota_crawler/crawler/TON-E/train_gpt.py",
+      "battery_profile": "depth_probe",
+      "description": "Topology split sweep over flat/crawler depth balance and loop count.",
+      "evidence": [
+        "/home/frosty40/sota_crawler/crawler/TON-E/README.nightcrawler_base.md",
+        "/home/frosty40/sota_crawler/README.md"
+      ]
+    },
+    {
+      "name": "compressor_line",
+      "role": "compressor",
+      "runner_mode": "env_bundle",
+      "runner_path": "/home/frosty40/sota_crawler/crawler/TON-E/train_gpt.py",
+      "battery_profile": "compression_gate",
+      "description": "Quantization and pruning line for artifact efficiency once a quality branch is real.",
+      "evidence": [
+        "/home/frosty40/sota_crawler/crawler/TON-E/run_litecrawler_local_8k.py",
+        "/home/frosty40/sota_crawler/research_brief/goals.md"
+      ]
+    },
+    {
+      "name": "verifier_line",
+      "role": "verifier",
+      "runner_mode": "script",
+      "runner_path": "/home/frosty40/sota_crawler/crawler/TON-E/run_litecrawler_local_8k.py",
+      "battery_profile": "repeatability_gate",
+      "description": "Repeat-run verifier used to confirm that a candidate survives multiple seeds and fixed launch conditions.",
+      "evidence": [
+        "/home/frosty40/sota_crawler/crawler/TON-E/run_litecrawler_local_8k.py",
+        "/home/frosty40/sota_crawler/lanes/README.md"
+      ]
+    }
+  ]
+}
