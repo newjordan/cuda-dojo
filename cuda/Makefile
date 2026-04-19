@@ -113,4 +113,13 @@ oracle_sigma_probe: chess_mcts oracle_sigma_smoke
 	  --top-k $(ORACLE_TOP_K) \
 	  --simulations $(ORACLE_PROBE_SIMS)
 
-.PHONY: all clean test mcts_audit mcts_ablate root_shakeout root_region_calibrate oracle_sigma_smoke oracle_sigma_probe
+fixture_oracle_audit:
+	node ./fixture_oracle_audit.mjs \
+	  --fixture ./false_finish_cases.json \
+	  --fixture ./king_pressure_cases.json \
+	  --fixture ./queen_pressure_cases.json
+
+stability_gate: chess_mcts stability_gate.py
+	$(PYTHON_BIN) ./stability_gate.py
+
+.PHONY: all clean test mcts_audit mcts_ablate root_shakeout root_region_calibrate oracle_sigma_smoke oracle_sigma_probe fixture_oracle_audit stability_gate
