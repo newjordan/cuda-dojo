@@ -1,13 +1,13 @@
 # Crawler Control
 
-This directory treats `~/sota_crawler` as a reusable research control plane.
+This directory is an experimental control-plane surface for structured calibration runs.
 
-The goal is not to copy one transformer block into chess. The goal is to reuse:
+The goal is not to embed crawler internals into the chess engine. The current use is narrower:
 
 - purpose-specific runner roles
 - explicit seed manifests
 - launch validation
-- later, layered promotion and lane-backed state
+- later, layered promotion and lane-backed state if the probes prove useful
 
 ## Files
 
@@ -25,4 +25,5 @@ python3 launch_probe.py
 
 `launch_probe.py` only executes `runner_mode = script` candidates, and it uses
 `--dry-run` so we can validate the launch surface without committing to long
-training runs yet.
+training runs yet. This is a measurement/control utility, not part of the live
+engine runtime.
