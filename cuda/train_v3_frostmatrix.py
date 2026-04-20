@@ -372,7 +372,8 @@ class FrostMatrixDataset(IterableDataset):
 
                 fen       = obj.get("fen", "")
                 family_id = int(obj.get("family_id", 0))
-                move_uci  = obj.get("move", "")
+                # Accept both "move" (training_v2 schema) and "uci_move" (augmented schema)
+                move_uci  = obj.get("move", "") or obj.get("uci_move", "")
                 # Remap {0→-1, 0.5→0, 1→1} so tanh value head trains correctly
                 outcome   = float(obj.get("outcome", 0.5)) * 2.0 - 1.0
 
@@ -1020,10 +1021,19 @@ def train(args: argparse.Namespace) -> None:
     if device.type != "cuda":
         print("WARNING: CUDA not available — running on CPU (not recommended)")
 
-    ckpt_dir = os.path.join(DEFAULT_CKPT_DIR)
+    ckpt_dir = args.ckpt_dir if args.ckpt_dir else DEFAULT_CKPT_DIR
     os.makedirs(ckpt_dir, exist_ok=True)
     train_start_time = time.time()
 
+    # ── JSONL telemetry log — every step gets a record ────────────────────────
+    log_path = os.path.join(ckpt_dir, "train_log.jsonl")
+    _log_f   = open(log_path, "a", buffering=1)   # line-buffered
+
+    def log_step(record: dict) -> None:
+        record["wall_time"] = time.time() - train_start_time
+        _log_f.write(json.dumps(record) + "\n")
+
+    print(f"[log] telemetry → {log_path}")
     print(f"[vocab] deterministic from_sq*64+to_sq encoding, POLICY_SIZE={VOCAB_SIZE}")
 
     # ── Model ──────────────────────────────────────────────────────────────────
@@ -1121,11 +1131,28 @@ def train(args: argparse.Namespace) -> None:
             scaler.update()
             scheduler.step()
 
+            _step_total  = total_loss.item()
+            _step_policy = policy_loss.item()
+            _step_value  = value_loss.item()
+
             global_step      += 1
             epoch_steps      += 1
-            epoch_total_loss  += total_loss.item()
-            epoch_policy_loss += policy_loss.item()
-            epoch_value_loss  += value_loss.item()
+            epoch_total_loss  += _step_total
+            epoch_policy_loss += _step_policy
+            epoch_value_loss  += _step_value
+
+            # ── JSONL telemetry — every 10 steps ─────────────────────────────
+            if global_step % 10 == 0:
+                log_step({
+                    "event": "step",
+                    "step": global_step,
+                    "epoch": epoch + 1,
+                    "loss": _step_total,
+                    "policy_loss": _step_policy,
+                    "value_loss": _step_value,
+                    "lr": scheduler.get_last_lr()[0],
+                    "steps_per_sec": epoch_steps / max(time.time() - t_start, 1e-6),
+                })
 
             # ── Log every 100 steps ───────────────────────────────────────────
             # ── Time-limit check ─────────────────────────────────────────────
@@ -1184,6 +1211,17 @@ def train(args: argparse.Namespace) -> None:
             ckpt_dir,
         )
         print(f"[ckpt] end-of-epoch checkpoint → {ckpt_saved}")
+        log_step({
+            "event": "epoch_end",
+            "epoch": epoch + 1,
+            "total_steps": global_step,
+            "epoch_steps": epoch_steps,
+            "avg_loss": avg_total,
+            "avg_policy_loss": avg_policy,
+            "avg_value_loss": avg_value,
+            "epoch_time_s": elapsed,
+            "ckpt": ckpt_saved,
+        })
 
         if _time_done:
             print(f"[time-limit] budget exhausted after epoch {epoch+1} — stopping", flush=True)
@@ -1192,6 +1230,8 @@ def train(args: argparse.Namespace) -> None:
     # ── Export weights after training ──────────────────────────────────────────
     export_dir = os.path.join(ckpt_dir, "export")
     export_weights(model, export_dir)
+    log_step({"event": "training_complete", "export_dir": export_dir})
+    _log_f.close()
     print(f"\n[done] training complete. weights exported to {export_dir}")
 
 
@@ -1209,7 +1249,7 @@ def export_only(args: argparse.Namespace) -> None:
     scaler = GradScaler(enabled=False)
 
     print(f"[export-only] loading {ckpt_path}")
-    step, epoch, loss, _ = load_checkpoint(ckpt_path, model, None, scaler)
+    step, epoch, loss = load_checkpoint(ckpt_path, model, None, scaler)
     print(f"[export-only] loaded step={step} epoch={epoch} loss={loss:.4f}")
 
     model.eval()
@@ -1255,6 +1295,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         help="Stop training after this many seconds (cross-epoch)",
+    )
+    parser.add_argument(
+        "--ckpt-dir",
+        default=None,
+        help=f"Override checkpoint/output directory (default: {DEFAULT_CKPT_DIR})",
     )
     return parser.parse_args()
 
