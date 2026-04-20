@@ -55,7 +55,8 @@ D_HEAD         = 32       # D_MODEL / N_HEADS
 N_HEADS        = 4
 N_LAYERS       = 4
 D_FFN          = 341      # SwiGLU reduced FFN
-VOCAB_SIZE     = 4096     # from_sq*64+to_sq — deterministic, covers all legal moves
+VOCAB_SIZE       = 4096   # from_sq*64+to_sq — policy head output size
+PIECE_VOCAB_SIZE = 13     # 0=empty, 1-6 white, 7-12 black — token embedding input size
 
 N_HW_DIRS      = 3        # lateral, vertical, diagonal
 D_HW_HEAD      = 32       # highway head dim per direction (3×32=96, projected→128)
@@ -372,7 +373,8 @@ class FrostMatrixDataset(IterableDataset):
                 fen       = obj.get("fen", "")
                 family_id = int(obj.get("family_id", 0))
                 move_uci  = obj.get("move", "")
-                outcome   = float(obj.get("outcome", 0))
+                # Remap {0→-1, 0.5→0, 1→1} so tanh value head trains correctly
+                outcome   = float(obj.get("outcome", 0.5)) * 2.0 - 1.0
 
                 # Clamp family_id to valid range
                 family_id = max(0, min(family_id, N_FAMILIES - 1))
@@ -657,15 +659,19 @@ class FrostMatrixV3(nn.Module):
     def __init__(self):
         super().__init__()
 
-        # ── Token embedding (board piece types + opening prefix IDs) ─────────
-        self.token_embed = nn.Embedding(VOCAB_SIZE, D_MODEL)
+        # ── Token embedding — piece types only (0=empty, 1-6 white, 7-12 black) ─
+        self.token_embed    = nn.Embedding(PIECE_VOCAB_SIZE, D_MODEL)
+        # Board positional encoding — each of the 64 squares gets a learned bias
+        self.board_pos_embed = nn.Embedding(64, D_MODEL)
 
         # ── Family axis ───────────────────────────────────────────────────────
         # family_embed: [N_FAMILIES, D_MODEL] — from FrostMatrix centroids
         # unknown_embed: [N_UNKNOWNS, D_MODEL] — learnable latent nodes
-        self.family_embed  = nn.Embedding(N_FAMILIES, D_MODEL)
-        self.unknown_embed = nn.Embedding(N_UNKNOWNS, D_MODEL)
-        nn.init.normal_(self.unknown_embed.weight, std=0.1)   # small init as in CUDA
+        # active_family_marker: added to the axis node of the current family
+        self.family_embed         = nn.Embedding(N_FAMILIES, D_MODEL)
+        self.unknown_embed        = nn.Embedding(N_UNKNOWNS, D_MODEL)
+        self.active_family_marker = nn.Parameter(torch.zeros(D_MODEL))
+        nn.init.normal_(self.unknown_embed.weight, std=0.1)
 
         # ── Geometry projection: geo channels → D_MODEL ───────────────────────
         # geo_proj_W: [N_GEO_CHANNELS, D_MODEL], geo_proj_b: [D_MODEL]
@@ -694,10 +700,12 @@ class FrostMatrixV3(nn.Module):
         s_f  = math.sqrt(2.0 / (D_MODEL + D_FFN))
 
         # token / family embeddings
-        nn.init.normal_(self.token_embed.weight, std=s_e)
-        nn.init.normal_(self.family_embed.weight, std=s_e)
+        nn.init.normal_(self.token_embed.weight,     std=s_e)
+        nn.init.normal_(self.board_pos_embed.weight, std=s_e)
+        nn.init.normal_(self.family_embed.weight,    std=s_e)
         nn.init.normal_(self.geo_proj.weight, std=s_e)
         nn.init.zeros_(self.geo_proj.bias)
+        nn.init.zeros_(self.active_family_marker)
 
         # Highway projections
         for d in range(N_HW_DIRS):
@@ -723,32 +731,39 @@ class FrostMatrixV3(nn.Module):
             nn.init.ones_(layer.ln2.weight)
             nn.init.zeros_(layer.ln2.bias)
 
-        # Output heads
-        nn.init.normal_(self.policy_W.weight, std=s_e)
-        nn.init.normal_(self.value_W.weight, std=s_e)
+        # Output heads — near-zero init so initial policy is near-uniform
+        nn.init.normal_(self.policy_W.weight, std=0.01)
+        nn.init.normal_(self.value_W.weight,  std=0.01)
         nn.init.zeros_(self.value_W.bias)
 
-    def build_family_axis(self, B: int, device: torch.device) -> torch.Tensor:
+    def build_family_axis(self, B: int, device: torch.device,
+                          family_id: torch.Tensor) -> torch.Tensor:
         """
         Build the Y-axis sequence of N_FAM_NODES=65 tokens.
         Layout: [fam_0, unk_01, fam_1, unk_12, ..., unk_31-32, fam_32]
-        Matches build_family_axis_kernel in the CUDA file.
+        The active_family_marker is added to the axis node matching family_id,
+        so the model knows which opening family the current position belongs to.
         Returns: [B, N_FAM_NODES, D_MODEL]
         """
-        fam_ids  = torch.arange(N_FAMILIES, device=device)   # [33]
-        unk_ids  = torch.arange(N_UNKNOWNS, device=device)   # [32]
-        fam_emb  = self.family_embed(fam_ids)                 # [33, D_MODEL]
-        unk_emb  = self.unknown_embed(unk_ids)                # [32, D_MODEL]
+        fam_ids = torch.arange(N_FAMILIES, device=device)
+        unk_ids = torch.arange(N_UNKNOWNS, device=device)
+        fam_emb = self.family_embed(fam_ids)    # [33, D_MODEL]
+        unk_emb = self.unknown_embed(unk_ids)   # [32, D_MODEL]
 
-        # Interleave: fam[0], unk[0], fam[1], unk[1], ..., unk[31], fam[32]
         tokens = []
         for i in range(N_FAMILIES):
             tokens.append(fam_emb[i])
             if i < N_UNKNOWNS:
                 tokens.append(unk_emb[i])
 
-        axis = torch.stack(tokens, dim=0)   # [65, D_MODEL]
-        return axis.unsqueeze(0).expand(B, -1, -1)   # [B, 65, D_MODEL]
+        axis = torch.stack(tokens, dim=0)                        # [65, D_MODEL]
+        axis = axis.unsqueeze(0).expand(B, -1, -1).clone()      # [B, 65, D_MODEL]
+
+        # Inject active family marker: family i lives at axis index 2*i
+        active_idx = (family_id * 2).clamp(0, N_FAM_NODES - 1)  # [B]
+        axis[torch.arange(B, device=device), active_idx] += self.active_family_marker
+
+        return axis
 
     def forward(
         self,
@@ -764,18 +779,18 @@ class FrostMatrixV3(nn.Module):
         B      = board_tokens.size(0)
         device = board_tokens.device
 
-        # ── Step 1: Build family axis ─────────────────────────────────────────
-        fam_x = self.build_family_axis(B, device)   # [B, 65, D]
+        # ── Step 1: Build family axis (conditioned on active family) ──────────
+        fam_x = self.build_family_axis(B, device, family_id)   # [B, 65, D]
 
-        # ── Step 2: Embed board tokens from piece type IDs ───────────────────
-        # board_tokens: [B, 64] piece indices in [0,12]
-        # Map through token_embed (first 13 slots = piece types)
-        board_x = self.token_embed(board_tokens)    # [B, 64, D]
+        # ── Step 2: Embed board tokens + positional encoding ─────────────────
+        # board_tokens: [B, 64] piece indices in [0, PIECE_VOCAB_SIZE-1]
+        board_x = self.token_embed(board_tokens)     # [B, 64, D]
+        pos_ids = torch.arange(64, device=device)
+        board_x = board_x + self.board_pos_embed(pos_ids)   # [B, 64, D]
 
         # ── Step 3: Project FrostMatrix geometry into board tokens ─────────────
-        # geo_proj: [B, 64, 55] → [B, 64, D]; add tanh-gated projection
         geo_proj = torch.tanh(self.geo_proj(geo_vecs))   # [B, 64, D]
-        board_x = board_x + geo_proj
+        board_x  = board_x + geo_proj
 
         # ── Step 4: Highway attention over family axis (3 directions) ─────────
         hw_delta = self.highway(fam_x)              # [B, 65, D]
@@ -813,7 +828,8 @@ def compute_loss(
     Returns (total_loss, policy_loss, value_loss).
     Total = policy_loss + 0.5 * value_loss
     """
-    policy_loss = F.cross_entropy(policy_logits, move_idx)
+    # Label smoothing prevents overconfident wrong predictions (ε=0.1)
+    policy_loss = F.cross_entropy(policy_logits, move_idx, label_smoothing=0.1)
     value_loss  = F.mse_loss(value, outcome)
     total_loss  = policy_loss + 0.5 * value_loss
     return total_loss, policy_loss, value_loss
@@ -854,8 +870,10 @@ def export_weights(model: FrostMatrixV3, export_dir: str) -> None:
 
     print(f"\n[export] writing weights to {export_dir}")
 
-    # ── token_embed: [VOCAB_SIZE × D_MODEL] ───────────────────────────────────
-    save_tensor("token_embed", model.token_embed.weight)
+    # ── token_embed: [PIECE_VOCAB_SIZE × D_MODEL] ────────────────────────────
+    save_tensor("token_embed",     model.token_embed.weight)
+    save_tensor("board_pos_embed", model.board_pos_embed.weight)
+    save_tensor("active_family_marker", model.active_family_marker.unsqueeze(0))
 
     # ── Per-layer weights ─────────────────────────────────────────────────────
     for l, layer in enumerate(model.layers):
@@ -1004,6 +1022,7 @@ def train(args: argparse.Namespace) -> None:
 
     ckpt_dir = os.path.join(DEFAULT_CKPT_DIR)
     os.makedirs(ckpt_dir, exist_ok=True)
+    train_start_time = time.time()
 
     print(f"[vocab] deterministic from_sq*64+to_sq encoding, POLICY_SIZE={VOCAB_SIZE}")
 
@@ -1015,12 +1034,18 @@ def train(args: argparse.Namespace) -> None:
     # ── Optimizer + AMP ────────────────────────────────────────────────────────
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=1e-4,
+        lr=3e-4,
         weight_decay=1e-2,
         betas=(0.9, 0.999),
         eps=1e-8,
     )
     scaler = GradScaler(enabled=(device.type == "cuda"))
+
+    # Linear warmup for first WARMUP_STEPS steps, then constant lr
+    WARMUP_STEPS = 2000
+    scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer, lr_lambda=lambda step: min(1.0, (step + 1) / WARMUP_STEPS)
+    )
 
     # ── Resume from checkpoint ─────────────────────────────────────────────────
     start_step  = 0
@@ -1041,7 +1066,7 @@ def train(args: argparse.Namespace) -> None:
 
     # ── Dataset + DataLoader ───────────────────────────────────────────────────
     def make_dataset(epoch_num: int) -> FrostMatrixDataset:
-        return FrostMatrixDataset(args.data)
+        return FrostMatrixDataset(args.data, max_samples=args.max_samples)
 
     def collate_fn(batch):
         board_tokens = torch.stack([b[0] for b in batch])   # [B, 64]
@@ -1094,6 +1119,7 @@ def train(args: argparse.Namespace) -> None:
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             scaler.step(optimizer)
             scaler.update()
+            scheduler.step()
 
             global_step      += 1
             epoch_steps      += 1
@@ -1102,17 +1128,26 @@ def train(args: argparse.Namespace) -> None:
             epoch_value_loss  += value_loss.item()
 
             # ── Log every 100 steps ───────────────────────────────────────────
+            # ── Time-limit check ─────────────────────────────────────────────
+            if args.time_limit is not None:
+                elapsed = time.time() - train_start_time
+                if elapsed >= args.time_limit:
+                    print(f'\n[time-limit] {elapsed:.1f}s elapsed — stopping early at step {global_step}', flush=True)
+                    break
+
             if global_step % 100 == 0:
                 avg_total  = epoch_total_loss  / epoch_steps
                 avg_policy = epoch_policy_loss / epoch_steps
                 avg_value  = epoch_value_loss  / epoch_steps
                 elapsed    = time.time() - t_start
                 steps_per_sec = epoch_steps / elapsed if elapsed > 0 else 0.0
+                cur_lr = scheduler.get_last_lr()[0]
                 print(
                     f"[train] epoch={epoch+1}/{args.epochs} step={global_step:,} "
                     f"loss={avg_total:.4f} "
                     f"policy={avg_policy:.4f} "
                     f"value={avg_value:.4f} "
+                    f"lr={cur_lr:.2e} "
                     f"({steps_per_sec:.1f} steps/s)"
                 )
 
@@ -1125,6 +1160,9 @@ def train(args: argparse.Namespace) -> None:
                     ckpt_dir,
                 )
                 print(f"[ckpt] saved → {ckpt_saved}")
+
+        # ── Check time-limit between epochs ───────────────────────────────────
+        _time_done = args.time_limit is not None and (time.time() - train_start_time) >= args.time_limit
 
         # ── End of epoch ───────────────────────────────────────────────────────
         avg_total  = epoch_total_loss  / max(epoch_steps, 1)
@@ -1146,6 +1184,10 @@ def train(args: argparse.Namespace) -> None:
             ckpt_dir,
         )
         print(f"[ckpt] end-of-epoch checkpoint → {ckpt_saved}")
+
+        if _time_done:
+            print(f"[time-limit] budget exhausted after epoch {epoch+1} — stopping", flush=True)
+            break
 
     # ── Export weights after training ──────────────────────────────────────────
     export_dir = os.path.join(ckpt_dir, "export")
@@ -1201,6 +1243,18 @@ def parse_args() -> argparse.Namespace:
         "--export-only",
         action="store_true",
         help="Skip training; just export weights from latest checkpoint",
+    )
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=None,
+        help="Cap samples per epoch (for smoke tests)",
+    )
+    parser.add_argument(
+        "--time-limit",
+        type=float,
+        default=None,
+        help="Stop training after this many seconds (cross-epoch)",
     )
     return parser.parse_args()
 
