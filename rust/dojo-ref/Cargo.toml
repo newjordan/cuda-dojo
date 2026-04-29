@@ -17,4 +17,8 @@ path = "examples/smoke.rs"
 name = "play_game"
 path = "examples/play_game.rs"
 
+[[example]]
+name = "match"
+path = "examples/match.rs"
+
 [dependencies]
