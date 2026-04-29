@@ -22,8 +22,18 @@
 #include "make_unmake.cuh"
 #include "attacks.cuh"
 #include "coord3d.cuh"
+#include "search.cuh"
+#include "uci.h"
+#include "tt.cuh"
+#include "zobrist.cuh"
 
 using namespace engine;
+
+// Stub for the only uci.cu symbol search.cu uses. We never run a UCI
+// command loop in this .so so external stop signals don't apply.
+namespace uci {
+    bool stop_requested() { return false; }
+}
 
 // =============================================================================
 // GPU kernels — chess work runs HERE, not on host.
@@ -231,6 +241,100 @@ void refc_move_to_uci(int32_t mv, char* uci_out) {
 /// Sizeof exposed so FFI callers can allocate Position correctly.
 int refc_position_size(void) {
     return (int)sizeof(Position);
+}
+
+// =============================================================================
+// Search — alpha-beta + PeSTO via cuda-dojo's existing GPU search kernels.
+// Calls search_root which runs iterative deepening with TT/zobrist on GPU.
+// =============================================================================
+
+static bool g_search_initialised = false;
+
+/// Initialize search subsystem (TT, zobrist, root buffers). Idempotent.
+void refc_search_init(void) {
+    if (!g_search_initialised) {
+        if (!zobrist_initialized()) init_zobrist();
+        tt_init();
+        search_init();
+        g_search_initialised = true;
+    }
+}
+
+/// Reset between games (clears the host-side stop flag mirror).
+void refc_search_new_game(void) {
+    if (!g_search_initialised) refc_search_init();
+    search_new_game();
+}
+
+/// Free search-side device memory.
+void refc_search_shutdown(void) {
+    if (g_search_initialised) {
+        search_shutdown();
+        g_search_initialised = false;
+    }
+}
+
+/// Search `pos` to fixed depth (or movetime). Writes UCI bestmove (≤6 bytes
+/// incl. NUL) into `uci_out`, score (cp from STM POV) into `score_out`.
+/// Returns 0 on success, non-zero on error.
+///
+/// One of (depth, movetime_ms) should be > 0. depth takes precedence.
+int refc_search(const Position* pos, int depth, int movetime_ms,
+                char* uci_out, int* score_out)
+{
+    if (!pos || !uci_out) return -1;
+    if (!g_search_initialised) refc_search_init();
+
+    uci::SearchLimits limits;
+    if (depth > 0) limits.depth = depth;
+    else if (movetime_ms > 0) limits.movetime = movetime_ms;
+    else limits.depth = 5;  // sensible default
+
+    int last_score = 0;
+    auto cb = [&](const uci::SearchInfo& info) {
+        last_score = info.score_cp;
+    };
+
+    uci::SearchResult res = search_root(*pos, limits, cb);
+
+    // Copy bestmove UCI (max 6 chars incl. NUL).
+    std::strncpy(uci_out, res.bestmove.c_str(), 6);
+    uci_out[5] = '\0';
+    if (score_out) *score_out = last_score;
+    return 0;
+}
+
+/// Convenience: search to depth, then return the encoded Move + score.
+/// Maps the UCI string back to a Move by enumerating legal_moves and
+/// matching by UCI text. Slightly slower than direct search but lets
+/// callers stay in the typed Move/Position world.
+int refc_search_best_move(const Position* pos, int depth, int movetime_ms,
+                            int32_t* move_out, int* score_out)
+{
+    if (!pos || !move_out) return -1;
+
+    char uci[6] = {0};
+    int score = 0;
+    if (refc_search(pos, depth, movetime_ms, uci, &score) != 0) return -1;
+    if (score_out) *score_out = score;
+
+    // Match UCI to a legal move.
+    int32_t legal[MAX_MOVES];
+    int n = refc_legal_moves(pos, legal, MAX_MOVES);
+    for (int i = 0; i < n; ++i) {
+        char buf[8] = {0};
+        move_to_uci(legal[i], buf);
+        if (std::strncmp(buf, uci, 6) == 0) {
+            *move_out = legal[i];
+            return 0;
+        }
+    }
+    // Fell through — search returned a non-legal UCI? Use first legal.
+    if (n > 0) {
+        *move_out = legal[0];
+        return 1;  // soft failure
+    }
+    return -1;
 }
 
 } // extern "C"

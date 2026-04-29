@@ -41,6 +41,17 @@ extern "C" {
     ) -> c_int;
     fn refc_move_to_uci(mv: i32, uci_out: *mut c_char);
     fn refc_position_size() -> c_int;
+
+    fn refc_search_init();
+    fn refc_search_new_game();
+    fn refc_search_shutdown();
+    fn refc_search_best_move(
+        pos: *const PositionRaw,
+        depth: c_int,
+        movetime_ms: c_int,
+        move_out: *mut i32,
+        score_out: *mut c_int,
+    ) -> c_int;
 }
 
 /// Owned chess position. Drop frees the underlying C allocation.
@@ -199,4 +210,79 @@ impl Drop for Position {
 /// Sanity check exposed at the FFI boundary.
 pub fn position_size() -> usize {
     unsafe { refc_position_size() as usize }
+}
+
+/// GPU search engine — alpha-beta with TT, killers, qsearch, PeSTO eval.
+/// All search work runs on the GPU. Exactly one `Engine` should exist
+/// per process; constructing additional engines reinitialises shared
+/// device buffers and is generally fine but unnecessary.
+pub struct Engine {
+    _private: (),
+}
+
+impl Engine {
+    /// Initialise the search subsystem (TT, zobrist, root buffers).
+    /// Idempotent across calls.
+    pub fn new() -> Self {
+        unsafe { refc_search_init() }
+        Engine { _private: () }
+    }
+
+    /// Reset between games (clears the host-side stop flag mirror).
+    pub fn new_game(&self) {
+        unsafe { refc_search_new_game() }
+    }
+
+    /// Search to fixed depth. Returns (bestmove, score in centipawns
+    /// from STM POV). Score is +mate when STM is mating.
+    pub fn search_depth(&self, pos: &Position, depth: u32) -> Option<(Move, i32)> {
+        let mut mv: i32 = 0;
+        let mut sc: c_int = 0;
+        let r = unsafe {
+            refc_search_best_move(
+                pos.raw,
+                depth as c_int,
+                0,
+                &mut mv,
+                &mut sc,
+            )
+        };
+        if r < 0 {
+            None
+        } else {
+            Some((Move(mv), sc as i32))
+        }
+    }
+
+    /// Search with movetime budget (ms). Returns (bestmove, score).
+    pub fn search_movetime(&self, pos: &Position, movetime_ms: u32) -> Option<(Move, i32)> {
+        let mut mv: i32 = 0;
+        let mut sc: c_int = 0;
+        let r = unsafe {
+            refc_search_best_move(
+                pos.raw,
+                0,
+                movetime_ms as c_int,
+                &mut mv,
+                &mut sc,
+            )
+        };
+        if r < 0 {
+            None
+        } else {
+            Some((Move(mv), sc as i32))
+        }
+    }
+}
+
+impl Drop for Engine {
+    fn drop(&mut self) {
+        unsafe { refc_search_shutdown() }
+    }
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
