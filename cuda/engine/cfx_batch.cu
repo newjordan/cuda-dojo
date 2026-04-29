@@ -23,6 +23,7 @@
 #include "movegen.cuh"
 #include "make_unmake.cuh"
 #include "attacks.cuh"
+#include "coord3d.cuh"
 
 using namespace engine;
 
@@ -34,12 +35,22 @@ using namespace engine;
 #endif
 
 // One block per FEN, one thread per candidate.
-// Output layout: n_resp_out[fen_idx * CFX_MAX_MOVES + cand_idx],
-//                legal_out[fen_idx * CFX_MAX_MOVES + cand_idx],
-//                n_legal_out[fen_idx].
+// Each thread computes the full CFX feature set (n_resp, mean_dist,
+// std_dist, max_dist) for its candidate using GPU compute_coord3d. All
+// chess-rule and coord work executes on the device.
+//
+// Output layout: per (fen_idx, cand_idx):
+//   n_resp_out[..]    — partner-legal-response count
+//   mean_dist_out[..] — mean ‖coord(response) − coord(candidate)‖ in 3D
+//   std_dist_out[..]  — stddev of those distances
+//   max_dist_out[..]  — max of those distances
+//   legal_out[..]     — the candidate move (UCI host-side)
 __global__ void cfx_batch_kernel(
     const Position* parents,
     int* n_resp_out,
+    float* mean_dist_out,
+    float* std_dist_out,
+    float* max_dist_out,
     Move* legal_out,
     int* n_legal_out
 ) {
@@ -72,24 +83,56 @@ __global__ void cfx_batch_kernel(
     Move cand = legal_buf[cand_idx];
     legal_out[fen_idx * CFX_MAX_MOVES + cand_idx] = cand;
 
-    // Apply candidate → child position. Enumerate partner pseudo-legal,
-    // count those that don't leave the partner's king in check.
+    // Apply candidate → child position.
     Position child = parent;
     Undo undo;
     make_move(&child, cand, &undo);
 
+    // Compute the candidate's own coord (X_m).
+    Coord3D cand_coord = compute_coord3d(&child);
+
+    // Enumerate partner pseudo-legal responses, filter for legality, and
+    // accumulate distance statistics over the legal-response coord cloud.
     Move responses[CFX_MAX_MOVES];
     int n_pseudo = generate_moves(&child, responses);
     int legal_count = 0;
+    float sum_d = 0.0f;
+    float sum_d2 = 0.0f;
+    float max_d = 0.0f;
+
     for (int j = 0; j < n_pseudo; ++j) {
         Position grandchild = child;
         Undo undo2;
         make_move(&grandchild, responses[j], &undo2);
-        if (!in_check(&grandchild, 1 - grandchild.side)) {
-            legal_count++;
-        }
+        if (in_check(&grandchild, 1 - grandchild.side)) continue;
+
+        Coord3D resp_coord = compute_coord3d(&grandchild);
+        float dx = resp_coord.x - cand_coord.x;
+        float dy = resp_coord.y - cand_coord.y;
+        float dz = resp_coord.z - cand_coord.z;
+        float d = sqrtf(dx * dx + dy * dy + dz * dz);
+
+        sum_d  += d;
+        sum_d2 += d * d;
+        if (d > max_d) max_d = d;
+        legal_count++;
     }
-    n_resp_out[fen_idx * CFX_MAX_MOVES + cand_idx] = legal_count;
+
+    int idx = fen_idx * CFX_MAX_MOVES + cand_idx;
+    n_resp_out[idx] = legal_count;
+    if (legal_count > 0) {
+        float mean = sum_d / float(legal_count);
+        float var  = sum_d2 / float(legal_count) - mean * mean;
+        if (var < 0.0f) var = 0.0f;
+        mean_dist_out[idx] = mean;
+        std_dist_out[idx]  = sqrtf(var);
+        max_dist_out[idx]  = max_d;
+    } else {
+        // Terminal — checkmate or stalemate after candidate.
+        mean_dist_out[idx] = 0.0f;
+        std_dist_out[idx]  = 0.0f;
+        max_dist_out[idx]  = 0.0f;
+    }
 }
 
 static inline void cuda_must(cudaError_t err, const char* what) {
@@ -127,12 +170,21 @@ int main(int /*argc*/, char** /*argv*/) {
 
     // Device side
     Position* d_parents = nullptr;
-    int* d_n_resp = nullptr;
-    Move* d_legal = nullptr;
-    int* d_n_legal = nullptr;
+    int*   d_n_resp    = nullptr;
+    float* d_mean_dist = nullptr;
+    float* d_std_dist  = nullptr;
+    float* d_max_dist  = nullptr;
+    Move*  d_legal     = nullptr;
+    int*   d_n_legal   = nullptr;
     cuda_must(cudaMalloc(&d_parents, n_fens * sizeof(Position)), "malloc parents");
     cuda_must(cudaMalloc(&d_n_resp, n_fens * CFX_MAX_MOVES * sizeof(int)),
               "malloc n_resp");
+    cuda_must(cudaMalloc(&d_mean_dist, n_fens * CFX_MAX_MOVES * sizeof(float)),
+              "malloc mean_dist");
+    cuda_must(cudaMalloc(&d_std_dist, n_fens * CFX_MAX_MOVES * sizeof(float)),
+              "malloc std_dist");
+    cuda_must(cudaMalloc(&d_max_dist, n_fens * CFX_MAX_MOVES * sizeof(float)),
+              "malloc max_dist");
     cuda_must(cudaMalloc(&d_legal, n_fens * CFX_MAX_MOVES * sizeof(Move)),
               "malloc legal");
     cuda_must(cudaMalloc(&d_n_legal, n_fens * sizeof(int)), "malloc n_legal");
@@ -147,7 +199,8 @@ int main(int /*argc*/, char** /*argv*/) {
 
     cudaEventRecord(start);
     cfx_batch_kernel<<<n_fens, CFX_MAX_MOVES>>>(
-        d_parents, d_n_resp, d_legal, d_n_legal
+        d_parents, d_n_resp, d_mean_dist, d_std_dist, d_max_dist,
+        d_legal, d_n_legal
     );
     cudaEventRecord(stop);
     cuda_must(cudaEventSynchronize(stop), "kernel sync");
@@ -156,12 +209,24 @@ int main(int /*argc*/, char** /*argv*/) {
     float ms = 0.0f;
     cudaEventElapsedTime(&ms, start, stop);
 
-    int* h_n_resp = (int*)malloc(n_fens * CFX_MAX_MOVES * sizeof(int));
-    Move* h_legal = (Move*)malloc(n_fens * CFX_MAX_MOVES * sizeof(Move));
-    int* h_n_legal = (int*)malloc(n_fens * sizeof(int));
+    int*   h_n_resp    = (int*)malloc(n_fens * CFX_MAX_MOVES * sizeof(int));
+    float* h_mean_dist = (float*)malloc(n_fens * CFX_MAX_MOVES * sizeof(float));
+    float* h_std_dist  = (float*)malloc(n_fens * CFX_MAX_MOVES * sizeof(float));
+    float* h_max_dist  = (float*)malloc(n_fens * CFX_MAX_MOVES * sizeof(float));
+    Move*  h_legal     = (Move*)malloc(n_fens * CFX_MAX_MOVES * sizeof(Move));
+    int*   h_n_legal   = (int*)malloc(n_fens * sizeof(int));
     cuda_must(cudaMemcpy(h_n_resp, d_n_resp, n_fens * CFX_MAX_MOVES * sizeof(int),
                          cudaMemcpyDeviceToHost),
               "memcpy n_resp");
+    cuda_must(cudaMemcpy(h_mean_dist, d_mean_dist, n_fens * CFX_MAX_MOVES * sizeof(float),
+                         cudaMemcpyDeviceToHost),
+              "memcpy mean_dist");
+    cuda_must(cudaMemcpy(h_std_dist, d_std_dist, n_fens * CFX_MAX_MOVES * sizeof(float),
+                         cudaMemcpyDeviceToHost),
+              "memcpy std_dist");
+    cuda_must(cudaMemcpy(h_max_dist, d_max_dist, n_fens * CFX_MAX_MOVES * sizeof(float),
+                         cudaMemcpyDeviceToHost),
+              "memcpy max_dist");
     cuda_must(cudaMemcpy(h_legal, d_legal, n_fens * CFX_MAX_MOVES * sizeof(Move),
                          cudaMemcpyDeviceToHost),
               "memcpy legal");
@@ -169,15 +234,20 @@ int main(int /*argc*/, char** /*argv*/) {
                          cudaMemcpyDeviceToHost),
               "memcpy n_legal");
 
-    // Output: one section per FEN. Header line: ">>> <fen> <n_legal>"
+    // Output per FEN. Header: ">>> <fen> <n_legal>"
+    // Per candidate: <uci> <n_resp> <mean_dist> <std_dist> <max_dist>
     long long total_candidates = 0;
     for (int i = 0; i < n_fens; ++i) {
         int n = h_n_legal[i];
         printf(">>> %s %d\n", fen_strs[i], n);
         for (int j = 0; j < n; ++j) {
+            int idx = i * CFX_MAX_MOVES + j;
             char uci[8] = {0};
-            move_to_uci(h_legal[i * CFX_MAX_MOVES + j], uci);
-            printf("%s %d\n", uci, h_n_resp[i * CFX_MAX_MOVES + j]);
+            move_to_uci(h_legal[idx], uci);
+            printf("%s %d %.6f %.6f %.6f\n",
+                   uci,
+                   h_n_resp[idx],
+                   h_mean_dist[idx], h_std_dist[idx], h_max_dist[idx]);
         }
         total_candidates += n;
     }
