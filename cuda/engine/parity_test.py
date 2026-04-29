@@ -34,37 +34,83 @@ import dojo_ref
 # ---------------------------------------------------------------------------
 
 def parse_pgn(path: Path) -> list[dict]:
-    """Yield one dict per game: {'headers': {...}, 'moves': [san_str, ...]}."""
-    games: list[dict] = []
-    text = path.read_text()
-    blocks = re.split(r"\n\s*\n", text.strip())
-    pending_headers: dict[str, str] | None = None
-    pending_moves: str | None = None
-    i = 0
-    while i < len(blocks):
-        block = blocks[i].strip()
-        if not block:
-            i += 1; continue
-        if block.startswith("["):
-            # Header block.
-            headers: dict[str, str] = {}
-            for line in block.split("\n"):
-                m = re.match(r'\[(\w+)\s+"(.*)"\]', line.strip())
+    """Load all games from a small PGN. For huge files use stream_pgn()."""
+    return list(stream_pgn(path))
+
+
+def stream_pgn(path: Path):
+    """Yield {'headers': {...}, 'moves': [san...]} dicts for each game.
+    Streams line-by-line so multi-GB PGNs don't blow memory.
+    """
+    headers: dict[str, str] = {}
+    in_moves = False
+    move_buf: list[str] = []
+    header_re = re.compile(r'\[(\w+)\s+"(.*)"\]')
+    with path.open("r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            stripped = line.strip()
+            if not stripped:
+                # blank line — separates header block / moves block / games
+                if in_moves and move_buf:
+                    mt = " ".join(move_buf)
+                    mt = re.sub(r"\{[^}]*\}", " ", mt)
+                    mt = re.sub(r"\$\d+", " ", mt)
+                    mt = re.sub(r"\d+\.(\.\.)?", " ", mt)
+                    mt = re.sub(r"(1-0|0-1|1/2-1/2|\*)\s*$", " ", mt)
+                    tokens = [t for t in mt.split() if t]
+                    yield {"headers": headers, "moves": tokens}
+                    headers = {}
+                    move_buf = []
+                    in_moves = False
+                continue
+            if stripped.startswith("["):
+                if in_moves:
+                    # Previous game ended without trailing blank line.
+                    mt = " ".join(move_buf)
+                    mt = re.sub(r"\{[^}]*\}", " ", mt)
+                    mt = re.sub(r"\$\d+", " ", mt)
+                    mt = re.sub(r"\d+\.(\.\.)?", " ", mt)
+                    mt = re.sub(r"(1-0|0-1|1/2-1/2|\*)\s*$", " ", mt)
+                    tokens = [t for t in mt.split() if t]
+                    yield {"headers": headers, "moves": tokens}
+                    headers = {}
+                    move_buf = []
+                    in_moves = False
+                m = header_re.match(stripped)
                 if m: headers[m.group(1)] = m.group(2)
-            pending_headers = headers
-        else:
-            # Movetext block. Strip move numbers, comments, NAGs, results.
-            mt = block
-            mt = re.sub(r"\{[^}]*\}", " ", mt)        # comments
-            mt = re.sub(r"\$\d+", " ", mt)             # NAGs
-            mt = re.sub(r"\d+\.(\.\.)?", " ", mt)      # move numbers
-            mt = re.sub(r"(1-0|0-1|1/2-1/2|\*)\s*$", " ", mt)  # result
+            else:
+                in_moves = True
+                move_buf.append(stripped)
+        # tail flush
+        if in_moves and move_buf:
+            mt = " ".join(move_buf)
+            mt = re.sub(r"\{[^}]*\}", " ", mt)
+            mt = re.sub(r"\$\d+", " ", mt)
+            mt = re.sub(r"\d+\.(\.\.)?", " ", mt)
+            mt = re.sub(r"(1-0|0-1|1/2-1/2|\*)\s*$", " ", mt)
             tokens = [t for t in mt.split() if t]
-            if pending_headers is not None:
-                games.append({"headers": pending_headers, "moves": tokens})
-                pending_headers = None
-        i += 1
-    return games
+            yield {"headers": headers, "moves": tokens}
+
+
+def reservoir_sample(stream, k: int, seed: int = 42, max_scan: int | None = None):
+    """Reservoir-sample k items from the stream.
+    O(k) memory regardless of stream length.
+    """
+    import random
+    rng = random.Random(seed)
+    reservoir: list = []
+    n = 0
+    for item in stream:
+        n += 1
+        if len(reservoir) < k:
+            reservoir.append(item)
+        else:
+            j = rng.randint(0, n - 1)
+            if j < k:
+                reservoir[j] = item
+        if max_scan is not None and n >= max_scan:
+            break
+    return reservoir, n
 
 
 # ---------------------------------------------------------------------------
@@ -280,17 +326,22 @@ def main():
     ap.add_argument("--n", type=int, default=100,
                     help="Max games to test (clamped to available)")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--max-scan", type=int, default=None,
+                    help="Cap how many games we read from the stream "
+                         "before stopping (reservoir sampling). Default: "
+                         "read whole file.")
     args = ap.parse_args()
 
-    games = parse_pgn(Path(args.pgn))
-    print(f"Loaded {len(games)} games from {args.pgn}")
+    print(f"Streaming {args.pgn} (reservoir-sample n={args.n})")
+    games, total_seen = reservoir_sample(
+        stream_pgn(Path(args.pgn)),
+        k=args.n,
+        seed=args.seed,
+        max_scan=args.max_scan,
+    )
+    print(f"Scanned {total_seen} games; sampled {len(games)} for replay")
     if not games:
         print("No games found.", file=sys.stderr); sys.exit(2)
-
-    import random
-    random.seed(args.seed)
-    if len(games) > args.n:
-        games = random.sample(games, args.n)
     print(f"Replaying {len(games)} games via dojo_ref GPU referee")
 
     pass_count = 0
