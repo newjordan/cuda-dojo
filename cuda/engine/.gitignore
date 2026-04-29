@@ -1,0 +1,20 @@
+# nvcc/cargo build artifacts
+*.o
+*.a
+*.so
+
+# Built executables (regenerate via `make all`)
+engine
+engine_base
+engine_cfx
+engine_cfxd1
+engine_test_perft
+cfx_batch
+cfx_smoke
+coord3d_smoke
+refcuda_smoke
+tests/test_zobrist
+tests/test_tt
+tests/test_makeunmake_symmetry
+tests/test_perft
+artifacts/
