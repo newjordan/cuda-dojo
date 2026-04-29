@@ -10,8 +10,52 @@
 // exact same score for any position.
 // =============================================================================
 #include "eval.cuh"
+#include "movegen.cuh"
+#include "make_unmake.cuh"
+#include "attacks.cuh"
 
 namespace engine {
+
+// CFX eval contribution: mobility-differential. Per the audit's
+// Req 5 partner-counterfactual, "how restricted is the opponent"
+// is a positional principle PeSTO doesn't directly capture.
+//
+// Returns legal-move count for `color` from `s`. Uses a null-move
+// to swap turn when `color` != s->side; falls back to a piece-count
+// estimate if the null-move would leave the king in check (illegal).
+__host__ __device__ inline int legal_moves_for_color(const Position* s, int color) {
+    Move buf[MAX_MOVES];
+    Position np = *s;
+    if (s->side != color) {
+        np.side = (int8_t)color;
+        np.ep   = -1;
+        if (in_check(&np, np.side)) {
+            // Null-move illegal — STM has check on `color`'s king. Cheap proxy:
+            // count `color`'s movable pieces × 4. Doesn't perturb material-
+            // dominated positions much; only kicks in for in-check leaves.
+            int pieces = 0;
+            for (int sq = 0; sq < 64; ++sq) {
+                int p = s->board[sq];
+                if (p != EMPTY && piece_color(p) == color) pieces++;
+            }
+            return pieces * 4;
+        }
+    }
+    int n_pseudo = generate_moves(&np, buf);
+    int legal = 0;
+    for (int i = 0; i < n_pseudo; ++i) {
+        Position c = np;
+        make_move(&c, buf[i]);
+        if (!in_check(&c, 1 - c.side)) legal++;
+    }
+    return legal;
+}
+
+// White-POV mobility differential. 2 centipawns per move-of-edge.
+// Bounded magnitude: with typical mobility around 30, the term is
+// O(60cp) — same order as a positional piece-square value, won't
+// swamp material.
+constexpr int MOBILITY_WEIGHT_CP = 2;
 
 // =================== device-side __constant__ tables ===================
 __constant__ int d_MG_PAWN[64] = {
@@ -289,6 +333,14 @@ __device__ Score d_evaluate(const Position* s) {
     }
     if (phase > 24) phase = 24;
     int score = (mg * phase + eg * (24 - phase)) / 24;
+
+    // CFX-blend term: white-POV mobility differential. Restricting
+    // opponent's options is a real chess principle (initiative,
+    // forcing geometry); PeSTO doesn't directly score it.
+    int wm = legal_moves_for_color(s, WHITE_SIDE);
+    int bm = legal_moves_for_color(s, BLACK_SIDE);
+    score += MOBILITY_WEIGHT_CP * (wm - bm);
+
     return (s->side == WHITE_SIDE) ? score : -score;
 }
 
@@ -318,6 +370,12 @@ Score h_evaluate(const Position* s) {
     }
     if (phase > 24) phase = 24;
     int score = (mg * phase + eg * (24 - phase)) / 24;
+
+    // Same CFX-blend term, host path. Numerically identical to device.
+    int wm = legal_moves_for_color(s, WHITE_SIDE);
+    int bm = legal_moves_for_color(s, BLACK_SIDE);
+    score += MOBILITY_WEIGHT_CP * (wm - bm);
+
     return (s->side == WHITE_SIDE) ? score : -score;
 }
 
