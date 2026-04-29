@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Run outputs — per-run timestamped dirs and large per-game JSON dumps.
+# Keep README evidence / sample summaries by name if you want to ship a
+# canonical proof corpus; everything else is local artifact.
+results/compare_*/
+results/shadow_*.json
+results/*.log
