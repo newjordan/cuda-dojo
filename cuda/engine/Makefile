@@ -125,9 +125,45 @@ engine_test: tests/test_zobrist tests/test_tt
 	./tests/test_zobrist
 	./tests/test_tt
 
+# GPU referee shared library (FFI ABI for Rust / Python / any-language callers).
+# Bundles refcuda.cu + the search subsystem (search/time/zobrist/tt) into a
+# .so so Rust crates and Python ctypes wrappers can import the GPU chess
+# referee. uci.cu is intentionally excluded — its UCI run-loop pulls in
+# engine.cu's main(); refcuda.cu provides a stub uci::stop_requested.
+REFCUDA_SO       = librefcuda.so
+REFCUDA_SO_SRCS  = refcuda.cu search.cu time.cu zobrist.cu tt.cu
+REFCUDA_SO_DEPS  = $(REFCUDA_SO_SRCS) $(LIB_NAME) coord3d.cuh
+NVCCFLAGS_SO     = $(ENGINE_ARCH_FLAGS) $(OPT_FLAGS) $(INCLUDES) $(CXX_STD) \
+                   $(RDC_FLAGS) -Xcompiler -fPIC --shared
+
+$(REFCUDA_SO): $(REFCUDA_SO_DEPS)
+	$(NVCC) $(NVCCFLAGS_SO) $(REFCUDA_SO_SRCS) $(LIB_NAME) -o $@
+
+librefcuda: $(REFCUDA_SO)
+
+# Build dojo-ref Rust crate (links librefcuda.so + cudart). Workspace lives
+# at ../../rust/Cargo.toml. cargo manages incremental compilation.
+RUST_DIR  ?= ../../rust
+CARGO     ?= cargo
+
+dojo_ref: $(REFCUDA_SO)
+	$(CARGO) build --manifest-path $(RUST_DIR)/Cargo.toml --release
+
+dojo_ref_test: dojo_ref
+	$(CARGO) run --manifest-path $(RUST_DIR)/Cargo.toml --release \
+	    --example smoke
+
+dojo_ref_play: dojo_ref
+	$(CARGO) run --manifest-path $(RUST_DIR)/Cargo.toml --release \
+	    --example play_game
+
 clean:
 	rm -f uci_test_engine engine engine_main.o uci_engine.o search.o time.o \
 	      zobrist.o tt.o tests/test_zobrist tests/test_tt $(ENGINE_OBJS) \
-	      $(LIB_NAME) engine_test_perft tests/test_makeunmake_symmetry
+	      $(LIB_NAME) $(REFCUDA_SO) refcuda_smoke \
+	      engine_test_perft tests/test_makeunmake_symmetry
+	-$(CARGO) clean --manifest-path $(RUST_DIR)/Cargo.toml 2>/dev/null || true
 
-.PHONY: all engine uci_test arena_gpu_smoke arena_smoke engine_verify_long skeleton_test clean engine_test test_zobrist test_tt
+.PHONY: all engine uci_test arena_gpu_smoke arena_smoke engine_verify_long \
+        skeleton_test clean engine_test test_zobrist test_tt \
+        librefcuda dojo_ref dojo_ref_test dojo_ref_play
