@@ -209,6 +209,11 @@ def san_to_uci(san: str, pmap: dict[int, str], legal_ucis: list[str],
                 mover_white: bool) -> str | None:
     """Return the UCI string in `legal_ucis` that the SAN refers to, or None."""
     s = san.strip()
+    # Strip + (check) and # (mate) suffixes — they're annotations, not part
+    # of the move identity. SAN like "O-O-O+" or "Qh7#" is the same move
+    # as "O-O-O" or "Qh7" for matching purposes.
+    while s and s[-1] in "+#":
+        s = s[:-1]
     # Castling.
     if s in ("O-O", "0-0"):
         # Kingside: king from e to g, same rank.
