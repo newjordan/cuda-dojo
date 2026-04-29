@@ -1,0 +1,16 @@
+[package]
+name = "dojo-ref"
+version = "0.1.0"
+edition = "2021"
+description = "Rust FFI binding for cuda-dojo's GPU chess referee (librefcuda.so)"
+license = "Apache-2.0"
+
+[lib]
+name = "dojo_ref"
+crate-type = ["rlib"]
+
+[[example]]
+name = "smoke"
+path = "examples/smoke.rs"
+
+[dependencies]
