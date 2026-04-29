@@ -12,6 +12,7 @@
 // =============================================================================
 #include "search.cuh"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -49,6 +50,7 @@ __device__ uint64_t   d_node_counter = 0;
 Position*  d_root_state = nullptr;
 Move*      d_root_moves = nullptr;
 int*       d_root_scores = nullptr;
+int*       d_root_n_resp = nullptr;   // CFX root-ordering buffer
 uint64_t*  d_root_hashes = nullptr;
 int*       d_root_count = nullptr;
 int        d_initialised = 0;
@@ -540,6 +542,37 @@ __global__ void k_tt_store_root(uint64_t hash, int score, int depth,
 }
 
 // =============================================================================
+// CFX root move-ordering (audit Req 5 partner-counterfactual, root layer).
+//
+// One thread per root candidate move. After applying the candidate, count the
+// opponent's legal-response set. Smaller = more forcing = sort earlier in
+// iterative deepening. Pure GPU work; host only sorts the resulting integer
+// array (not chess work).
+// =============================================================================
+__global__ void cfx_root_n_resp_kernel(
+    const Position* root_state,
+    const Move*     candidates,
+    int             n_candidates,
+    int*            n_resp_out)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= n_candidates) return;
+
+    Position child = *root_state;
+    make_move(&child, candidates[idx]);
+
+    Move buf[MAX_MOVES];
+    int n_pseudo = generate_moves(&child, buf);
+    int legal = 0;
+    for (int j = 0; j < n_pseudo; ++j) {
+        Position c = child;
+        make_move(&c, buf[j]);
+        if (!in_check(&c, 1 - c.side)) legal++;
+    }
+    n_resp_out[idx] = legal;
+}
+
+// =============================================================================
 // Host helpers — set/clear stop flag, copy to device.
 // =============================================================================
 static void set_device_stop(int v) {
@@ -743,6 +776,8 @@ void search_init() {
     if (err != cudaSuccess) std::fprintf(stderr, "search_init: d_root_hashes: %s\n", cudaGetErrorString(err));
     err = cudaMalloc(&d_root_count, sizeof(int));
     if (err != cudaSuccess) std::fprintf(stderr, "search_init: d_root_count: %s\n", cudaGetErrorString(err));
+    err = cudaMalloc(&d_root_n_resp, sizeof(int) * SEARCH_MAX_ROOT_MOVES);
+    if (err != cudaSuccess) std::fprintf(stderr, "search_init: d_root_n_resp: %s\n", cudaGetErrorString(err));
 
     SchedulerConfig scheduler_config{};
     scheduler_config.frontier_capacity = RUNTIME_SCHEDULER_CAPACITY;
@@ -780,6 +815,7 @@ void search_shutdown() {
     if (d_root_scores)  cudaFree(d_root_scores);
     if (d_root_hashes)  cudaFree(d_root_hashes);
     if (d_root_count)   cudaFree(d_root_count);
+    if (d_root_n_resp)  cudaFree(d_root_n_resp);
     if (h_runtime_initialised) {
         eval_service_shutdown(&h_eval_service);
         scheduler_shutdown(&h_scheduler_storage);
@@ -787,6 +823,7 @@ void search_shutdown() {
     d_root_state = nullptr;
     d_root_moves = nullptr;
     d_root_scores = nullptr;
+    d_root_n_resp = nullptr;
     d_root_hashes = nullptr;
     d_root_count = nullptr;
     h_runtime_initialised = 0;
@@ -860,6 +897,38 @@ uci::SearchResult search_root(const Position& root,
 
     Move legal_moves[MAX_MOVES];
     cudaMemcpy(legal_moves, d_root_moves, sizeof(Move) * n_legal, cudaMemcpyDeviceToHost);
+
+    // ---- CFX root move-ordering (audit Req 5 partner-counterfactual) ----
+    // For each candidate, compute n_resp = legal-response count after
+    // applying the candidate. Smaller = more forcing = explore first.
+    // Better ordering → tighter alpha-beta cutoffs at the root → deeper
+    // search in the same time budget. Pure GPU compute; host only sorts
+    // the resulting integer array (sort is not chess work).
+    {
+        cfx_root_n_resp_kernel<<<n_legal, 1>>>(
+            d_root_state, d_root_moves, n_legal, d_root_n_resp
+        );
+        cudaError_t err = cudaGetLastError();
+        if (err == cudaSuccess) err = cudaDeviceSynchronize();
+        if (err == cudaSuccess) {
+            int n_resp_host[MAX_MOVES];
+            cudaMemcpy(n_resp_host, d_root_n_resp,
+                       sizeof(int) * n_legal, cudaMemcpyDeviceToHost);
+            // Stable index-sort by ascending n_resp_host.
+            int order[MAX_MOVES];
+            for (int i = 0; i < n_legal; ++i) order[i] = i;
+            std::stable_sort(order, order + n_legal,
+                [&](int a, int b) { return n_resp_host[a] < n_resp_host[b]; });
+            Move sorted[MAX_MOVES];
+            for (int i = 0; i < n_legal; ++i) sorted[i] = legal_moves[order[i]];
+            for (int i = 0; i < n_legal; ++i) legal_moves[i] = sorted[i];
+            cudaMemcpy(d_root_moves, legal_moves,
+                       sizeof(Move) * n_legal, cudaMemcpyHostToDevice);
+        } else {
+            std::fprintf(stderr, "search: cfx_root sort skipped: %s\n",
+                         cudaGetErrorString(err));
+        }
+    }
 
     // Trivial bestmove fallback (in case search aborts immediately).
     {

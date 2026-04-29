@@ -333,14 +333,6 @@ __device__ Score d_evaluate(const Position* s) {
     }
     if (phase > 24) phase = 24;
     int score = (mg * phase + eg * (24 - phase)) / 24;
-
-    // CFX-blend term: white-POV mobility differential. Restricting
-    // opponent's options is a real chess principle (initiative,
-    // forcing geometry); PeSTO doesn't directly score it.
-    int wm = legal_moves_for_color(s, WHITE_SIDE);
-    int bm = legal_moves_for_color(s, BLACK_SIDE);
-    score += MOBILITY_WEIGHT_CP * (wm - bm);
-
     return (s->side == WHITE_SIDE) ? score : -score;
 }
 
@@ -370,12 +362,6 @@ Score h_evaluate(const Position* s) {
     }
     if (phase > 24) phase = 24;
     int score = (mg * phase + eg * (24 - phase)) / 24;
-
-    // Same CFX-blend term, host path. Numerically identical to device.
-    int wm = legal_moves_for_color(s, WHITE_SIDE);
-    int bm = legal_moves_for_color(s, BLACK_SIDE);
-    score += MOBILITY_WEIGHT_CP * (wm - bm);
-
     return (s->side == WHITE_SIDE) ? score : -score;
 }
 
