@@ -150,6 +150,24 @@ export async function playGame(opts) {
         try { rmSync(dir, { recursive: true, force: true }); } catch {}
     }
 
+    // Surface fighter-side failures to the prod log. live_match.py
+    // attaches fighter_diag (returncode, stderr_tail, stdout_tail,
+    // outcome, container, side) to the result on crash / oom /
+    // timeout / invalid_format outcomes; otherwise it's absent.
+    if (payload.fighter_diag) {
+        const d = payload.fighter_diag;
+        const stderr = (d.stderr_tail || '').slice(-1000).replace(/\n/g, ' | ');
+        const stdout = (d.stdout_tail || '').slice(-200).replace(/\n/g, ' | ');
+        // eslint-disable-next-line no-console
+        console.error(
+            `[fighter_diag] match=${matchId} reason=${payload.reason} side=${d.side || '?'} ` +
+            `outcome=${d.outcome || '?'} rc=${d.returncode === undefined ? '-' : d.returncode} ` +
+            `container=${d.container || '?'} ` +
+            (d.after_retry ? 'after_retry=1 ' : '') +
+            `stderr=${stderr} stdout=${stdout}`
+        );
+    }
+
     // Format SAN PGN identical to prod's output (broker submits this).
     const pgn = buildPgnSync({
         whiteName,
