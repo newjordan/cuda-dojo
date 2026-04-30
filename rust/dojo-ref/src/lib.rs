@@ -52,6 +52,28 @@ extern "C" {
         move_out: *mut i32,
         score_out: *mut c_int,
     ) -> c_int;
+
+    // Batched ABI — process N positions in one launch + one synchronize.
+    // Inputs are CONTIGUOUS Position structs of size refc_position_size()
+    // bytes each (NOT PositionRaw with its safety padding) — see the
+    // packed buffer the safe wrappers below build.
+    fn refc_legal_moves_batched(
+        positions: *const u8,
+        n: c_int,
+        moves_out: *mut i32,
+        counts_out: *mut c_int,
+    ) -> c_int;
+    fn refc_make_move_batched(
+        positions: *const u8,
+        n: c_int,
+        moves: *const i32,
+        out: *mut u8,
+    ) -> c_int;
+    fn refc_is_check_batched(
+        positions: *const u8,
+        n: c_int,
+        out: *mut c_int,
+    ) -> c_int;
 }
 
 /// Owned chess position. Drop frees the underlying C allocation.
@@ -210,6 +232,136 @@ impl Drop for Position {
 /// Sanity check exposed at the FFI boundary.
 pub fn position_size() -> usize {
     unsafe { refc_position_size() as usize }
+}
+
+// =========================================================================
+// Batched API — process N positions in one launch.
+//
+// Each batched call replaces N single-position calls and pays one cudaMalloc
+// per buffer + one H↔D copy + one launch + one cudaDeviceSynchronize for
+// the whole batch (see refcuda.cu). At N=6 we measured 13× over single in
+// ctypes; gain grows with N until per-position kernel work dominates.
+// =========================================================================
+
+/// Pack N Positions into a contiguous host buffer of `n * position_size()`
+/// bytes — what the batched C ABI expects.
+fn pack_positions(positions: &[&Position]) -> Vec<u8> {
+    let p_size = position_size();
+    let mut packed = vec![0u8; positions.len() * p_size];
+    for (i, pos) in positions.iter().enumerate() {
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                pos.raw as *const u8,
+                packed[i * p_size..].as_mut_ptr(),
+                p_size,
+            );
+        }
+    }
+    packed
+}
+
+/// Legal moves for N positions in one launch. Returns one Vec<Move> per
+/// input position, in the same order. Empty input returns an empty Vec.
+pub fn legal_moves_batched(positions: &[&Position]) -> Vec<Vec<Move>> {
+    let n = positions.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    const MAX_MOVES: usize = 256;
+    let packed = pack_positions(positions);
+    let mut moves_out = vec![0i32; n * MAX_MOVES];
+    let mut counts_out = vec![0i32; n];
+    let rc = unsafe {
+        refc_legal_moves_batched(
+            packed.as_ptr(),
+            n as c_int,
+            moves_out.as_mut_ptr(),
+            counts_out.as_mut_ptr(),
+        )
+    };
+    if rc != 0 {
+        return vec![Vec::new(); n];
+    }
+    (0..n)
+        .map(|i| {
+            let count = counts_out[i].max(0) as usize;
+            let base = i * MAX_MOVES;
+            moves_out[base..base + count]
+                .iter()
+                .copied()
+                .map(Move)
+                .collect()
+        })
+        .collect()
+}
+
+/// Apply N moves to N positions in one launch. `positions[i]` and `moves[i]`
+/// must align. Returns N successor Positions in the same order.
+pub fn make_move_batched(
+    positions: &[&Position],
+    moves: &[Move],
+) -> Result<Vec<Position>, RefError> {
+    let n = positions.len();
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+    if moves.len() != n {
+        return Err(RefError::IllegalMove);
+    }
+    let p_size = position_size();
+    let packed = pack_positions(positions);
+    let mvs: Vec<i32> = moves.iter().map(|m| m.0).collect();
+    let mut packed_out = vec![0u8; n * p_size];
+    let rc = unsafe {
+        refc_make_move_batched(
+            packed.as_ptr(),
+            n as c_int,
+            mvs.as_ptr(),
+            packed_out.as_mut_ptr(),
+        )
+    };
+    if rc != 0 {
+        return Err(RefError::IllegalMove);
+    }
+    // Allocate one PositionRaw per result and memcpy the bytes in.
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        unsafe {
+            let raw = refc_position_new();
+            if raw.is_null() {
+                // Free anything we already allocated to avoid a leak
+                // before returning.
+                for p in out.drain(..) {
+                    drop(p);
+                }
+                return Err(RefError::AllocFailed);
+            }
+            std::ptr::copy_nonoverlapping(
+                packed_out[i * p_size..].as_ptr(),
+                raw as *mut u8,
+                p_size,
+            );
+            out.push(Position { raw });
+        }
+    }
+    Ok(out)
+}
+
+/// Side-to-move-in-check predicate for N positions in one launch.
+pub fn is_check_batched(positions: &[&Position]) -> Vec<bool> {
+    let n = positions.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let packed = pack_positions(positions);
+    let mut out = vec![0i32; n];
+    let rc = unsafe {
+        refc_is_check_batched(packed.as_ptr(), n as c_int, out.as_mut_ptr())
+    };
+    if rc != 0 {
+        return vec![false; n];
+    }
+    out.into_iter().map(|x| x != 0).collect()
 }
 
 /// GPU search engine — alpha-beta with TT, killers, qsearch, PeSTO eval.
