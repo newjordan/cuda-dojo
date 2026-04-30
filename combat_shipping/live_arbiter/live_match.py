@@ -66,35 +66,87 @@ def _detect_ext(code: str) -> str:
 
 
 def start_container(match_id: str, color: str, agent_code: str) -> dict:
+    """Start a Docker sandbox for a fighter. Defensive against the
+    failure modes we see at production concurrency:
+      - stale container with the same name from a prior run that didn't
+        clean up (docker daemon retains it briefly after rm)
+      - docker daemon load-induced delays on `docker run`
+      - transient `docker exec` failures right after container creation
+
+    Raises RuntimeError with a useful message on terminal failure;
+    callers (play_game) translate that to a 'crash' result. Does NOT
+    use check=True on the run subprocess so we can read returncode +
+    stderr to decide retry vs surrender."""
     name = f"cuda-{match_id}-{color}"
     ext = _detect_ext(agent_code)
 
-    # Spawn the sandbox container, sleep infinity so we can exec into it
-    # repeatedly. Same docker flags as production arbiter.
+    # Pre-clean any stale container with this name. Idempotent — silently
+    # succeeds if no such container exists.
     subprocess.run(
-        [
-            "docker", "run", "-d",
-            "--name", name,
-            "--network", "none",
-            "--read-only",
-            "--memory", AGENT_MEMORY,
-            "--cpus", AGENT_CPUS,
-            "--cap-drop", "ALL",
-            "--security-opt", "no-new-privileges",
-            "--pids-limit", AGENT_PIDS_LIMIT,
-            "--tmpfs", f"/tmp:size={AGENT_TMPFS_SIZE},nodev,nosuid",
-            SANDBOX_IMAGE,
-            "sleep", "infinity",
-        ],
-        check=True, capture_output=True, timeout=15,
+        ["docker", "rm", "-f", name],
+        capture_output=True, timeout=10,
     )
 
-    # Pipe agent code into /tmp/agent.<ext> via docker exec stdin.
-    p = subprocess.run(
-        ["docker", "exec", "-i", name, "sh", "-c", f"cat > /tmp/agent{ext}"],
-        input=agent_code.encode("utf-8"),
-        check=True, capture_output=True, timeout=10,
-    )
+    last_err = None
+    for attempt in range(3):
+        try:
+            r = subprocess.run(
+                [
+                    "docker", "run", "-d",
+                    "--name", name,
+                    "--network", "none",
+                    "--read-only",
+                    "--memory", AGENT_MEMORY,
+                    "--cpus", AGENT_CPUS,
+                    "--cap-drop", "ALL",
+                    "--security-opt", "no-new-privileges",
+                    "--pids-limit", AGENT_PIDS_LIMIT,
+                    "--tmpfs", f"/tmp:size={AGENT_TMPFS_SIZE},nodev,nosuid",
+                    SANDBOX_IMAGE,
+                    "sleep", "infinity",
+                ],
+                capture_output=True, timeout=30,
+            )
+        except subprocess.TimeoutExpired as e:
+            last_err = f"docker run timed out (attempt {attempt+1}/3)"
+            time.sleep(0.5)
+            continue
+        if r.returncode == 0:
+            break
+        # Conflict on container name → retry after rm.
+        stderr = r.stderr.decode("utf-8", "replace")
+        last_err = f"docker run rc={r.returncode} stderr={stderr[:300]}"
+        if "already in use" in stderr or "Conflict" in stderr:
+            subprocess.run(["docker", "rm", "-f", name],
+                           capture_output=True, timeout=10)
+        time.sleep(0.5)
+    else:
+        raise RuntimeError(f"start_container failed after 3 attempts: {last_err}")
+
+    # Pipe agent code into /tmp/agent.<ext>. Retry on transient failures
+    # (rare race where `docker exec` lands before the runtime is ready).
+    last_err = None
+    for attempt in range(3):
+        try:
+            p = subprocess.run(
+                ["docker", "exec", "-i", name, "sh", "-c", f"cat > /tmp/agent{ext}"],
+                input=agent_code.encode("utf-8"),
+                capture_output=True, timeout=20,
+            )
+        except subprocess.TimeoutExpired:
+            last_err = f"docker exec timed out (attempt {attempt+1}/3)"
+            time.sleep(0.5)
+            continue
+        if p.returncode == 0:
+            break
+        last_err = f"docker exec rc={p.returncode} stderr={p.stderr.decode('utf-8','replace')[:300]}"
+        time.sleep(0.5)
+    else:
+        # Container is up but we can't write the fighter — kill it.
+        subprocess.run(["docker", "rm", "-f", name],
+                       capture_output=True, timeout=10)
+        raise RuntimeError(f"docker exec (write fighter) failed after 3 attempts: {last_err}")
+
     return {"name": name, "ext": ext}
 
 

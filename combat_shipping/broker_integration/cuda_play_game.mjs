@@ -136,10 +136,15 @@ export async function playGame(opts) {
             payload = runViaSubprocess(callArgs);
         }
     } catch (err) {
-        const e = err.stderr ? err.stderr.toString().slice(0, 300)
-            : (err.message || String(err));
+        const stderrStr = err.stderr ? err.stderr.toString() : '';
+        const stdoutStr = err.stdout ? err.stdout.toString() : '';
+        const msg = err.message || String(err);
         // eslint-disable-next-line no-console
-        console.error(`[cuda_play_game] match=${matchId} dispatch error: ${e.replace(/\n/g, ' | ')}`);
+        console.error(
+            `[cuda_play_game] match=${matchId} dispatch error: msg=${msg} ` +
+            `| stderr_tail=${stderrStr.slice(-1500).replace(/\n/g, ' | ')} ` +
+            `| stdout_tail=${stdoutStr.slice(-200).replace(/\n/g, ' | ')}`
+        );
         payload = { result: 'draw', reason: 'crash', plies: 0, moves: [], pgn_result: '1/2-1/2' };
     } finally {
         try { rmSync(dir, { recursive: true, force: true }); } catch {}
