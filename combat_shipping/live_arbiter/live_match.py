@@ -43,7 +43,14 @@ from gpu_state import HostState
 UCI_RE = re.compile(r"^[a-h][1-8][a-h][1-8][qrbn]?$")
 
 SANDBOX_IMAGE = os.environ.get("CUDA_SANDBOX_IMAGE", "agentchess-sandbox:latest")
-DEFAULT_MEMORY = os.environ.get("CUDA_AGENT_MEMORY", "256m")
+# AGENT_* env vars are shared with the lifted-caps arbiter bridge so
+# both sides of the head-to-head run under identical docker resources.
+# Defaults match prod (cpus=0.5, mem=256m).
+AGENT_CPUS = os.environ.get("AGENT_CPUS", "0.5")
+AGENT_MEMORY = os.environ.get("AGENT_MEMORY", os.environ.get("CUDA_AGENT_MEMORY", "256m"))
+AGENT_PIDS_LIMIT = os.environ.get("AGENT_PIDS_LIMIT", "32")
+AGENT_TMPFS_SIZE = os.environ.get("AGENT_TMPFS_SIZE", "10m")
+DEFAULT_MEMORY = AGENT_MEMORY  # back-compat alias
 
 
 # ----------------------------------------------------------------------
@@ -70,12 +77,12 @@ def start_container(match_id: str, color: str, agent_code: str) -> dict:
             "--name", name,
             "--network", "none",
             "--read-only",
-            "--memory", DEFAULT_MEMORY,
-            "--cpus", "0.5",
+            "--memory", AGENT_MEMORY,
+            "--cpus", AGENT_CPUS,
             "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges",
-            "--pids-limit", "32",
-            "--tmpfs", "/tmp:size=10m,nodev,nosuid",
+            "--pids-limit", AGENT_PIDS_LIMIT,
+            "--tmpfs", f"/tmp:size={AGENT_TMPFS_SIZE},nodev,nosuid",
             SANDBOX_IMAGE,
             "sleep", "infinity",
         ],

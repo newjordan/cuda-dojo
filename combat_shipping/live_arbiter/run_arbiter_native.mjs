@@ -22,8 +22,16 @@ import { basename } from 'node:path';
 const ARBITER_SRC = process.env.ARBITER_SRC
     || '/home/frosty40/AgentChess_Server/match-processor/src';
 
-// Import arbiter's playGame from its sandboxed-referee module.
-const { playGame } = await import(`${ARBITER_SRC}/sandboxed-referee.js`);
+// By default we import combat_shipping's lifted-caps fork (rules from
+// prod chess-engine.js, docker caps env-tunable via AGENT_CPUS /
+// AGENT_MEMORY) so the arbiter side runs under the same caps as the
+// cuda side in head-to-head comparison. Set ARBITER_USE_PROD=1 to
+// import prod's sandboxed-referee.js verbatim instead.
+const useProd = process.env.ARBITER_USE_PROD === '1';
+const playgameUrl = useProd
+    ? `${ARBITER_SRC}/sandboxed-referee.js`
+    : new URL('../bridges/playgame_lifted.mjs', import.meta.url).href;
+const { playGame } = await import(playgameUrl);
 
 function parseArgs(argv) {
     const args = {};
