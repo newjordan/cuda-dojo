@@ -87,6 +87,43 @@ __global__ void k_coord3d(const Position* s, float* out_xyz, int* out_octant) {
     *out_octant = c.octant_id;
 }
 
+// ----- Batched kernels -----------------------------------------------------
+// Each block handles one position from the input array. Single thread per
+// block (the inner work is serial today; SIMT-parallelizing per-position is
+// a follow-up). The win vs single-position kernels is one launch +
+// one synchronize for the whole batch instead of N each.
+
+__global__ void k_legal_moves_batched(const Position* s, int n,
+                                      Move* out, int* out_counts) {
+    int idx = blockIdx.x;
+    if (idx >= n || threadIdx.x != 0) return;
+    Move pseudo[MAX_MOVES];
+    int m = generate_moves(&s[idx], pseudo);
+    Move* my_out = out + idx * MAX_MOVES;
+    int legal = 0;
+    for (int i = 0; i < m; ++i) {
+        Position c = s[idx];
+        make_move(&c, pseudo[i]);
+        if (in_check(&c, 1 - c.side)) continue;
+        my_out[legal++] = pseudo[i];
+    }
+    out_counts[idx] = legal;
+}
+
+__global__ void k_make_move_batched(const Position* s_in, int n,
+                                    const Move* mvs, Position* s_out) {
+    int idx = blockIdx.x;
+    if (idx >= n || threadIdx.x != 0) return;
+    s_out[idx] = s_in[idx];
+    make_move(&s_out[idx], mvs[idx]);
+}
+
+__global__ void k_in_check_batched(const Position* s, int n, int* out) {
+    int idx = blockIdx.x;
+    if (idx >= n || threadIdx.x != 0) return;
+    out[idx] = in_check(&s[idx], s[idx].side) ? 1 : 0;
+}
+
 } // anonymous namespace
 
 // =============================================================================
@@ -241,6 +278,90 @@ void refc_move_to_uci(int32_t mv, char* uci_out) {
 /// Sizeof exposed so FFI callers can allocate Position correctly.
 int refc_position_size(void) {
     return (int)sizeof(Position);
+}
+
+// ============================================================================
+// Batched FFI — process N positions in a single launch.
+//
+// Each batched call replaces N single-position calls and pays:
+//   - 1 cudaMalloc per buffer (vs N)
+//   - 1 H→D copy of size N×T (vs N copies of size T)
+//   - 1 kernel launch (vs N)
+//   - 1 cudaDeviceSynchronize (vs N)
+//   - 1 D→H copy back (vs N)
+//
+// Output layout for legal_moves_batched:
+//   moves_out[i * MAX_MOVES + 0 .. counts_out[i]-1] = legal moves for pos[i]
+//   moves_out is host-side, length ≥ n * MAX_MOVES int32_t.
+//   counts_out is host-side, length ≥ n.
+// ============================================================================
+
+/// Compute legal moves for N positions in one launch.
+int refc_legal_moves_batched(const Position* positions, int n,
+                             int32_t* moves_out, int* counts_out) {
+    if (!positions || !moves_out || !counts_out || n <= 0) return -1;
+
+    Position* d_pos = nullptr;
+    Move* d_moves = nullptr;
+    int* d_counts = nullptr;
+    cudaMalloc(&d_pos, sizeof(Position) * n);
+    cudaMalloc(&d_moves, sizeof(Move) * MAX_MOVES * n);
+    cudaMalloc(&d_counts, sizeof(int) * n);
+
+    cudaMemcpy(d_pos, positions, sizeof(Position) * n, cudaMemcpyHostToDevice);
+    k_legal_moves_batched<<<n, 1>>>(d_pos, n, d_moves, d_counts);
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(counts_out, d_counts, sizeof(int) * n, cudaMemcpyDeviceToHost);
+    cudaMemcpy(moves_out, d_moves, sizeof(int32_t) * MAX_MOVES * n,
+               cudaMemcpyDeviceToHost);
+
+    cudaFree(d_pos);
+    cudaFree(d_moves);
+    cudaFree(d_counts);
+    return 0;
+}
+
+/// Apply N moves to N positions, output N successor positions.
+int refc_make_move_batched(const Position* positions, int n,
+                           const int32_t* moves, Position* out) {
+    if (!positions || !moves || !out || n <= 0) return -1;
+
+    Position *d_in = nullptr, *d_out = nullptr;
+    Move* d_mvs = nullptr;
+    cudaMalloc(&d_in, sizeof(Position) * n);
+    cudaMalloc(&d_out, sizeof(Position) * n);
+    cudaMalloc(&d_mvs, sizeof(Move) * n);
+
+    cudaMemcpy(d_in, positions, sizeof(Position) * n, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_mvs, moves, sizeof(Move) * n, cudaMemcpyHostToDevice);
+    k_make_move_batched<<<n, 1>>>(d_in, n, d_mvs, d_out);
+    cudaDeviceSynchronize();
+    cudaMemcpy(out, d_out, sizeof(Position) * n, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_in);
+    cudaFree(d_out);
+    cudaFree(d_mvs);
+    return 0;
+}
+
+/// In-check predicate for N positions.
+int refc_is_check_batched(const Position* positions, int n, int* out) {
+    if (!positions || !out || n <= 0) return -1;
+
+    Position* d_pos = nullptr;
+    int* d_out = nullptr;
+    cudaMalloc(&d_pos, sizeof(Position) * n);
+    cudaMalloc(&d_out, sizeof(int) * n);
+
+    cudaMemcpy(d_pos, positions, sizeof(Position) * n, cudaMemcpyHostToDevice);
+    k_in_check_batched<<<n, 1>>>(d_pos, n, d_out);
+    cudaDeviceSynchronize();
+    cudaMemcpy(out, d_out, sizeof(int) * n, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_pos);
+    cudaFree(d_out);
+    return 0;
 }
 
 // =============================================================================
