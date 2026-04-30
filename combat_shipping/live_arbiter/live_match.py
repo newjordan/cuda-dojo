@@ -208,13 +208,40 @@ def get_agent_move(name: str, ext: str, fen: str, timeout_ms: int,
             "container": name,
         })
 
+    # If the fighter wrote a valid UCI move to stdout *before* the
+    # timeout / non-zero exit, accept it. Python fighters notoriously
+    # don't auto-exit after print() if their script has trailing code
+    # or non-daemon threads — `timeout` then kills them at the budget
+    # boundary and we see rc=124 even though the move is in stdout.
+    # Mirror what the production arbiter does in spirit: parse the move
+    # if it's there.
+    full_stdout = p.stdout.decode("utf-8", "replace")
+    last_line = (full_stdout.strip().splitlines() or [""])[-1].strip()
+    UCI_LINE = __import__("re").compile(r"^[a-h][1-8][a-h][1-8][qrbn]?$")
+    move_in_stdout = bool(UCI_LINE.match(last_line))
+
     if p.returncode == 124:
+        if move_in_stdout:
+            if diag is not None:
+                diag["outcome"] = "ok_late"
+                diag["note"] = "rc=124 but valid move in stdout (fighter slow to exit)"
+            return last_line
         if diag is not None: diag["outcome"] = "guest_timeout"
         return "__TIMEOUT__"
     if p.returncode == 137:
+        if move_in_stdout:
+            if diag is not None:
+                diag["outcome"] = "ok_oom"
+                diag["note"] = "rc=137 but valid move in stdout (oom-killed after responding)"
+            return last_line
         if diag is not None: diag["outcome"] = "oom"
         return "__OOM__"
     if p.returncode != 0:
+        if move_in_stdout:
+            if diag is not None:
+                diag["outcome"] = "ok_crashed"
+                diag["note"] = f"rc={p.returncode} but valid move in stdout (fighter crashed after responding)"
+            return last_line
         if diag is not None: diag["outcome"] = "crash"
         # Keep the legacy stderr line for `[live_match] CRASH` log scrapers.
         sys.stderr.write(
@@ -223,7 +250,7 @@ def get_agent_move(name: str, ext: str, fen: str, timeout_ms: int,
         )
         return "__CRASH__"
     if diag is not None: diag["outcome"] = "ok"
-    return stdout_tail.strip() if stdout_tail else p.stdout.decode("utf-8", "replace").strip()
+    return last_line if move_in_stdout else (stdout_tail.strip() if stdout_tail else full_stdout.strip())
 
 
 def stop_container(name: str) -> None:
@@ -368,9 +395,19 @@ def play_game(
             # ------------------------------------------------------
             if uci not in legal:
                 winner = "black" if is_white_turn else "white"
+                # Diagnostic: capture what the fighter actually returned
+                # (possibly truncated by stdout_tail[-200:]) and a sample
+                # of legal moves it could have picked. This lets us
+                # distinguish "fighter has bug" from "we mis-parsed
+                # stdout / clipped a multi-line output."
+                illegal_diag = dict(last_diag)
+                illegal_diag["uci_returned"] = uci
+                illegal_diag["legal_sample"] = legal[:8]
+                illegal_diag["legal_count"] = len(legal)
                 return _result(
                     winner, "illegal", ply, move_log,
                     white_name, black_name, t_start, match_id, max_plies,
+                    fighter_diag=illegal_diag,
                 )
 
             # ------------------------------------------------------
