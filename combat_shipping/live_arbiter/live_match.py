@@ -59,13 +59,25 @@ DEFAULT_MEMORY = AGENT_MEMORY  # back-compat alias
 # behavior is unchanged from production.
 # ----------------------------------------------------------------------
 
-def _detect_ext(code: str) -> str:
+def _detect_ext(code: str, language: str = "js") -> str:
+    """Pick the file extension + interpreter dispatch based on the
+    fighter language declared by the broker. CRITICAL: prod fighters
+    are a mix of JS and Python; if we get this wrong, a Python fighter
+    is run by node (or vice versa) and crashes immediately on syntax.
+
+    `language` comes from the broker as "js" or "py" — same as
+    sandboxed-referee.js's `language` parameter. Default 'js' is for
+    callers that don't yet pass it (e.g., legacy direct CLI uses)."""
+    if language == "py":
+        return ".py"
+    # JS: distinguish CommonJS vs ESM by source content.
     if "require(" in code and "import " not in code:
         return ".js"
     return ".mjs"
 
 
-def start_container(match_id: str, color: str, agent_code: str) -> dict:
+def start_container(match_id: str, color: str, agent_code: str,
+                    language: str = "js") -> dict:
     """Start a Docker sandbox for a fighter. Defensive against the
     failure modes we see at production concurrency:
       - stale container with the same name from a prior run that didn't
@@ -78,7 +90,7 @@ def start_container(match_id: str, color: str, agent_code: str) -> dict:
     use check=True on the run subprocess so we can read returncode +
     stderr to decide retry vs surrender."""
     name = f"cuda-{match_id}-{color}"
-    ext = _detect_ext(agent_code)
+    ext = _detect_ext(agent_code, language)
 
     # Pre-clean any stale container with this name. Idempotent — silently
     # succeeds if no such container exists.
@@ -155,16 +167,22 @@ def get_agent_move(name: str, ext: str, fen: str, timeout_ms: int,
     """Send FEN to fighter on stdin, capture UCI on stdout. Same
     contract as arbiter's getAgentMove.
 
+    Interpreter is chosen from the file extension: .py -> python3,
+    .js / .mjs -> node. Mirrors sandboxed-referee.js. Getting this
+    wrong is the difference between a working fighter and a SyntaxError
+    on first move.
+
     If `diag` is provided, populates it on every call with the actual
     docker exec returncode + stderr/stdout tails so callers can carry
     the failure detail into the result JSON. This is the diagnostic
     bus for crash / timeout / oom triage."""
     timeout_sec = max(1, (timeout_ms + 999) // 1000)
+    runtime = "python3" if ext == ".py" else "node"
     try:
         p = subprocess.run(
             ["docker", "exec", "-i", name,
              "timeout", str(timeout_sec),
-             "node", f"/tmp/agent{ext}"],
+             runtime, f"/tmp/agent{ext}"],
             input=(fen + "\n").encode("utf-8"),
             capture_output=True,
             timeout=(timeout_ms + 2000) / 1000.0,
@@ -227,6 +245,8 @@ def play_game(
     move_timeout_ms: int = 5500,
     white_name: str | None = None,
     black_name: str | None = None,
+    white_lang: str = "js",
+    black_lang: str = "js",
 ) -> dict:
     if match_id is None:
         match_id = uuid.uuid4().hex[:8]
@@ -242,9 +262,10 @@ def play_game(
     move_log: list[str] = []
     t_start = time.monotonic()
 
-    # Spawn Docker sandboxes (mirrors arbiter exactly).
-    white = start_container(match_id, "white", white_code)
-    black = start_container(match_id, "black", black_code)
+    # Spawn Docker sandboxes (mirrors arbiter exactly). Pass language
+    # so .py fighters get python3 and .mjs/.js fighters get node.
+    white = start_container(match_id, "white", white_code, white_lang)
+    black = start_container(match_id, "black", black_code, black_lang)
 
     try:
         for ply in range(max_plies):
@@ -301,9 +322,10 @@ def play_game(
             if uci in ("__CRASH__", "__OOM__"):
                 # One retry with a fresh container, mirroring arbiter.
                 code = white_code if is_white_turn else black_code
+                lang = white_lang if is_white_turn else black_lang
                 stop_container(agent["name"])
                 fresh = start_container(
-                    match_id + "r", "white" if is_white_turn else "black", code
+                    match_id + "r", "white" if is_white_turn else "black", code, lang
                 )
                 if is_white_turn:
                     white = fresh; agent = white
@@ -423,13 +445,17 @@ def build_pgn_uci(white_name, black_name, moves, result, reason, match_id):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--white", required=True, help="path to white fighter .js/.mjs")
-    ap.add_argument("--black", required=True, help="path to black fighter .js/.mjs")
+    ap.add_argument("--white", required=True, help="path to white fighter .js/.mjs/.py")
+    ap.add_argument("--black", required=True, help="path to black fighter .js/.mjs/.py")
     ap.add_argument("--match-id", default=None)
     ap.add_argument("--max-plies", type=int, default=500)
     ap.add_argument("--move-timeout-ms", type=int, default=5500)
     ap.add_argument("--white-name", default=None)
     ap.add_argument("--black-name", default=None)
+    ap.add_argument("--white-lang", choices=["js", "py"], default="js",
+                    help="white fighter language (js|py); MUST match what the broker sent")
+    ap.add_argument("--black-lang", choices=["js", "py"], default="js",
+                    help="black fighter language (js|py); MUST match what the broker sent")
     ap.add_argument("--out-json", default=None,
                     help="write JSON result here (default: stdout)")
     ap.add_argument("--out-pgn", default=None,
@@ -444,6 +470,8 @@ def main():
         move_timeout_ms=args.move_timeout_ms,
         white_name=args.white_name,
         black_name=args.black_name,
+        white_lang=args.white_lang,
+        black_lang=args.black_lang,
     )
     payload = {k: v for k, v in out.items() if k != "pgn"}
     if args.out_pgn:

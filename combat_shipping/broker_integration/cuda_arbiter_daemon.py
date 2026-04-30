@@ -82,6 +82,8 @@ def handle_client(conn: socket.socket, peer: str) -> None:
                     move_timeout_ms=int(req.get("move_timeout_ms", 5500)),
                     white_name=req.get("white_name"),
                     black_name=req.get("black_name"),
+                    white_lang=req.get("white_lang", "js"),
+                    black_lang=req.get("black_lang", "js"),
                 )
                 # Drop pgn — JS side rebuilds via prod pgn-builder for SAN.
                 payload = {k: v for k, v in out.items() if k != "pgn"}

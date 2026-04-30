@@ -45,7 +45,7 @@ const { buildPgnSync } = await import(`${ARBITER_SRC}/pgn-builder.js`);
 const { generateLegalMoves } = await import(`${ARBITER_SRC}/chess-engine.js`);
 
 
-function runViaSubprocess({ matchId, whiteName, blackName, wPath, bPath, jsonOut, maxPlies, moveTimeoutMs }) {
+function runViaSubprocess({ matchId, whiteName, blackName, whiteLang, blackLang, wPath, bPath, jsonOut, maxPlies, moveTimeoutMs }) {
     const overallTimeoutMs = maxPlies * (moveTimeoutMs + 1000) + 30000;
     execFileSync(PYTHON, [
         LIVE_MATCH_PY,
@@ -54,6 +54,8 @@ function runViaSubprocess({ matchId, whiteName, blackName, wPath, bPath, jsonOut
         '--match-id', matchId,
         '--white-name', whiteName,
         '--black-name', blackName,
+        '--white-lang', whiteLang,
+        '--black-lang', blackLang,
         '--max-plies', String(maxPlies),
         '--move-timeout-ms', String(moveTimeoutMs),
         '--out-json', jsonOut,
