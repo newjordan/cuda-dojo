@@ -150,9 +150,15 @@ def start_container(match_id: str, color: str, agent_code: str) -> dict:
     return {"name": name, "ext": ext}
 
 
-def get_agent_move(name: str, ext: str, fen: str, timeout_ms: int) -> str:
+def get_agent_move(name: str, ext: str, fen: str, timeout_ms: int,
+                   diag: dict | None = None) -> str:
     """Send FEN to fighter on stdin, capture UCI on stdout. Same
-    contract as arbiter's getAgentMove."""
+    contract as arbiter's getAgentMove.
+
+    If `diag` is provided, populates it on every call with the actual
+    docker exec returncode + stderr/stdout tails so callers can carry
+    the failure detail into the result JSON. This is the diagnostic
+    bus for crash / timeout / oom triage."""
     timeout_sec = max(1, (timeout_ms + 999) // 1000)
     try:
         p = subprocess.run(
@@ -163,21 +169,43 @@ def get_agent_move(name: str, ext: str, fen: str, timeout_ms: int) -> str:
             capture_output=True,
             timeout=(timeout_ms + 2000) / 1000.0,
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
+        if diag is not None:
+            diag.update({
+                "outcome": "host_timeout",
+                "returncode": None,
+                "stderr_tail": "",
+                "stdout_tail": "",
+                "container": name,
+            })
         return "__TIMEOUT__"
 
-    if p.returncode == 124:  # GNU timeout fired
+    stderr_tail = p.stderr.decode("utf-8", "replace")[-1500:]
+    stdout_tail = p.stdout.decode("utf-8", "replace")[-200:]
+    if diag is not None:
+        diag.update({
+            "returncode": p.returncode,
+            "stderr_tail": stderr_tail,
+            "stdout_tail": stdout_tail,
+            "container": name,
+        })
+
+    if p.returncode == 124:
+        if diag is not None: diag["outcome"] = "guest_timeout"
         return "__TIMEOUT__"
-    if p.returncode == 137:  # OOM kill
+    if p.returncode == 137:
+        if diag is not None: diag["outcome"] = "oom"
         return "__OOM__"
     if p.returncode != 0:
-        # Crash: log to stderr, return sentinel.
+        if diag is not None: diag["outcome"] = "crash"
+        # Keep the legacy stderr line for `[live_match] CRASH` log scrapers.
         sys.stderr.write(
             f"[live_match] CRASH {name} exit={p.returncode} "
-            f"stderr={p.stderr.decode('utf-8', 'replace')[:200]}\n"
+            f"stderr={stderr_tail[:200]}\n"
         )
         return "__CRASH__"
-    return p.stdout.decode("utf-8", "replace").strip()
+    if diag is not None: diag["outcome"] = "ok"
+    return stdout_tail.strip() if stdout_tail else p.stdout.decode("utf-8", "replace").strip()
 
 
 def stop_container(name: str) -> None:
@@ -260,10 +288,15 @@ def play_game(
                 )
 
             # ------------------------------------------------------
-            # Ask the fighter.
+            # Ask the fighter. `diag` carries the docker exec result
+            # detail so we can attach the actual fighter exit signal
+            # to the result on crash/timeout/oom.
             # ------------------------------------------------------
             fen = host.fen()
-            uci = get_agent_move(agent["name"], agent["ext"], fen, move_timeout_ms)
+            diag: dict = {}
+            uci = get_agent_move(agent["name"], agent["ext"], fen, move_timeout_ms, diag)
+            last_diag = dict(diag)
+            last_diag["side"] = "white" if is_white_turn else "black"
 
             if uci in ("__CRASH__", "__OOM__"):
                 # One retry with a fresh container, mirroring arbiter.
@@ -276,15 +309,20 @@ def play_game(
                     white = fresh; agent = white
                 else:
                     black = fresh; agent = black
+                diag = {}
                 uci = get_agent_move(
-                    agent["name"], agent["ext"], fen, move_timeout_ms
+                    agent["name"], agent["ext"], fen, move_timeout_ms, diag
                 )
+                last_diag = dict(diag)
+                last_diag["side"] = "white" if is_white_turn else "black"
+                last_diag["after_retry"] = True
 
             if uci == "__TIMEOUT__":
                 winner = "black" if is_white_turn else "white"
                 return _result(
                     winner, "timeout", ply, move_log,
                     white_name, black_name, t_start, match_id, max_plies,
+                    fighter_diag=last_diag,
                 )
             if uci in ("__CRASH__", "__OOM__"):
                 winner = "black" if is_white_turn else "white"
@@ -292,6 +330,7 @@ def play_game(
                 return _result(
                     winner, reason, ply, move_log,
                     white_name, black_name, t_start, match_id, max_plies,
+                    fighter_diag=last_diag,
                 )
 
             if not UCI_RE.match(uci):
@@ -299,6 +338,7 @@ def play_game(
                 return _result(
                     winner, "invalid_format", ply, move_log,
                     white_name, black_name, t_start, match_id, max_plies,
+                    fighter_diag={"raw_stdout": uci[:200], "side": "white" if is_white_turn else "black"},
                 )
 
             # ------------------------------------------------------
@@ -330,7 +370,7 @@ def play_game(
 
 
 def _result(result, reason, plies, moves, white, black,
-            t_start, match_id, max_plies):
+            t_start, match_id, max_plies, fighter_diag=None):
     if result == "white":
         pgn_result = "1-0"
     elif result == "black":
@@ -339,7 +379,7 @@ def _result(result, reason, plies, moves, white, black,
         pgn_result = "1/2-1/2"
 
     pgn = build_pgn_uci(white, black, moves, pgn_result, reason, match_id)
-    return {
+    out = {
         "match_id": match_id,
         "result": result,
         "pgn_result": pgn_result,
@@ -351,6 +391,9 @@ def _result(result, reason, plies, moves, white, black,
         "referee": "cuda",
         "pgn": pgn,
     }
+    if fighter_diag is not None:
+        out["fighter_diag"] = fighter_diag
+    return out
 
 
 def build_pgn_uci(white_name, black_name, moves, result, reason, match_id):
