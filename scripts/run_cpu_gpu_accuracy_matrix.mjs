@@ -122,10 +122,11 @@ function buildMarkdown(summary) {
     const agreement = item.agreementRate == null ? 'n/a' : `${(item.agreementRate * 100).toFixed(1)}%`;
     const coverage = item.coverage == null ? 'n/a' : `${(item.coverage * 100).toFixed(1)}%`;
     const comparable = item.comparablePositions ?? 'n/a';
-    const condition = item.gpuSummary?.timeoutRootProxy ||
+    const condition = item.condition?.label ||
+      (item.gpuSummary?.timeoutRootProxy ||
       item.warnings?.includes('timeout_root_proxy_condition_not_strict_parity')
-      ? 'proxy'
-      : 'strict';
+        ? 'proxy'
+        : 'strict');
     const report = item.mdPath ? basename(item.mdPath) : 'n/a';
     lines.push(`| ${item.name} | ${status} | ${agreement} | ${coverage} | ${comparable} | ${condition} | ${report} |`);
   }

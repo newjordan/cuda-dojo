@@ -10,6 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
 const REPORT_DIR = join(REPO_ROOT, 'runtime', 'reports');
 const GPU_FORGE_BIN = join(REPO_ROOT, 'cuda', 'gpu_forge');
+const CPU_HARNESS_CONDITION = 'standalone_current_fen';
 
 function parseArgs(argv) {
   const options = {
@@ -221,6 +222,7 @@ function buildMarkdown(report) {
   lines.push(`Generated: ${report.generatedAt}`);
   lines.push(`Fighter: ${report.fighter}`);
   lines.push(`Blob: ${report.fighterBlob}`);
+  lines.push(`Condition: ${report.condition.label}`);
   lines.push('');
   lines.push(`Verdict: **${report.ok ? 'PASS' : 'FAIL'}**`);
   lines.push('');
@@ -244,6 +246,8 @@ function main() {
   const { usable, skipped, input } = buildCpuInputLines(fighterPath, corpus);
   const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuSerialRoot, options.gpuRootOrder, options.gpuFamilyDispatch, options.gpuTimeoutRootProxy);
   const summary = gpu.summary || {};
+  const gpuCondition = summary.timeoutRootProxy ? 'proxy' : 'strict';
+  const conditionLabel = `${CPU_HARNESS_CONDITION}+${gpuCondition}`;
 
   const comparable = Number(summary.comparablePositions || 0);
   const agreements = Number(summary.agreements || 0);
@@ -286,6 +290,11 @@ function main() {
       size: corpus.length,
       usableCpuPositions: usable.length,
       skippedCpuPositions: skipped.length,
+    },
+    condition: {
+      label: conditionLabel,
+      cpuHarness: CPU_HARNESS_CONDITION,
+      gpu: gpuCondition,
     },
     gpuSummary: {
       inputLines: Number(summary.inputLines || 0),
@@ -330,6 +339,7 @@ function main() {
     fighterFamily: report.gpuSummary.fighterFamily,
     familyDispatch: report.gpuSummary.familyDispatch,
     timeoutRootProxy: report.gpuSummary.timeoutRootProxy,
+    condition: report.condition,
     failures: report.failures,
     warnings: report.warnings,
     jsonPath,

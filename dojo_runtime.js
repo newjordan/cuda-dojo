@@ -174,6 +174,7 @@ function buildWrappedAgent(agentPath) {
     engineCode = code.substring(0, idxA);
     getMoveCall = `
   const start = performance.now();
+  if (typeof currentFen !== 'undefined') currentFen = fen;
   const pos = parseFen(fen);
   const result = iterativeDeepening(pos);
   let bestMove = result && typeof result === 'object' ? result.move : result;
