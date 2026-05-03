@@ -29,6 +29,7 @@ function parseArgs(argv) {
     gpuFullQeval: false,
     gpuFilterLegal: false,
     gpuTraincarEval: false,
+    gpuSerialRoot: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -43,6 +44,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
     else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
+    else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
   }
   return options;
 }
@@ -63,6 +65,7 @@ function runOne(entry, options) {
   if (options.gpuFullQeval) args.push('--gpu-full-qeval');
   if (options.gpuFilterLegal) args.push('--gpu-filter-legal');
   if (options.gpuTraincarEval) args.push('--gpu-traincar-eval');
+  if (options.gpuSerialRoot) args.push('--gpu-serial-root');
 
   try {
     const raw = execFileSync(process.execPath, args, {

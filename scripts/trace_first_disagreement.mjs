@@ -21,6 +21,7 @@ function parseArgs(argv) {
     gpuFullQeval: false,
     gpuFilterLegal: false,
     gpuTraincarEval: false,
+    gpuSerialRoot: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -37,6 +38,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
     else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
+    else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
 
@@ -96,6 +98,7 @@ function runGpuTrace(options, fighterBlob, fen, cpuMove, legalMoves) {
   if (options.gpuFullQeval) forgeArgs.push('--full-qeval');
   if (options.gpuFilterLegal) forgeArgs.push('--filter-legal');
   if (options.gpuTraincarEval) forgeArgs.push('--traincar-eval');
+  if (options.gpuSerialRoot) forgeArgs.push('--serial-root');
   const command = options.timeoutMs > 0
     ? ['timeout', '--kill-after=10s', `${Math.ceil(options.timeoutMs / 1000)}s`, GPU_FORGE_BIN, ...forgeArgs]
     : [GPU_FORGE_BIN, ...forgeArgs];
@@ -202,6 +205,7 @@ function main() {
       gpuFullQeval: options.gpuFullQeval,
       gpuFilterLegal: options.gpuFilterLegal,
       gpuTraincarEval: options.gpuTraincarEval,
+      gpuSerialRoot: options.gpuSerialRoot,
     },
     cpu,
     gpu: {

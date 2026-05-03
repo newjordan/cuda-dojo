@@ -1213,6 +1213,42 @@ __global__ void searchKernel(
   d_scores[tid] = -negamax(&child, searchDepth - 1, -99999.0f, 99999.0f, 1);
 }
 
+__global__ void serialRootSearchKernel(
+  Board* d_board,
+  Move* d_moves,
+  int numMoves,
+  float* d_scores,
+  int searchDepth
+) {
+  if (threadIdx.x != 0 || blockIdx.x != 0) return;
+
+  float alpha = -99999.0f;
+  const float beta = 99999.0f;
+  int movesSearched = 0;
+
+  for (int i = 0; i < numMoves; i++) {
+    Board child = *d_board;
+    makeMove(&child, &d_moves[i]);
+    if (C_FILTER_LEGAL && isInCheck(&child, 1 - child.side)) {
+      d_scores[i] = -99999.0f;
+      continue;
+    }
+
+    float score;
+    if (movesSearched > 0) {
+      score = -negamax(&child, searchDepth - 1, -alpha - 1.0f, -alpha, 1);
+    } else {
+      score = alpha + 1.0f;
+    }
+    if (score > alpha) {
+      score = -negamax(&child, searchDepth - 1, -beta, -alpha, 1);
+    }
+    d_scores[i] = score;
+    movesSearched++;
+    if (score > alpha) alpha = score;
+  }
+}
+
 // ============================================================================
 // KERNEL: evalWithKnobs — static eval with personality knobs (for knob tuner)
 // Kept from v1 for the disagreement analysis / knob tuning step.
@@ -1441,6 +1477,7 @@ int main(int argc, char** argv) {
   int fullQeval = 0;
   int filterLegal = 0;
   int traincarEval = 0;
+  int serialRoot = 0;
   int positional = 0;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--fighter-blob") == 0) { i++; continue; }
@@ -1460,6 +1497,10 @@ int main(int argc, char** argv) {
     }
     if (strcmp(argv[i], "--traincar-eval") == 0) {
       traincarEval = 1;
+      continue;
+    }
+    if (strcmp(argv[i], "--serial-root") == 0) {
+      serialRoot = 1;
       continue;
     }
     if (argv[i][0] == '-') continue;
@@ -1495,6 +1536,7 @@ int main(int argc, char** argv) {
   if (fullQeval) fprintf(stderr, "[dojo] full qsearch eval: enabled\n");
   if (filterLegal) fprintf(stderr, "[dojo] legal child filter: enabled\n");
   if (traincarEval) fprintf(stderr, "[dojo] traincar eval bridge: enabled\n");
+  if (serialRoot) fprintf(stderr, "[dojo] serial root search: enabled\n");
 
   // Upload fighter knobs to constant memory for search evaluation
   cudaMemcpyToSymbol(C_FIGHTER_KNOBS, defaults, KNOB_COUNT * sizeof(float));
@@ -1641,8 +1683,12 @@ int main(int argc, char** argv) {
     // ================================================================
     cudaMemcpy(d_moves, h_moves, numMoves * sizeof(Move), cudaMemcpyHostToDevice);
 
-    int searchBlocks = (numMoves + 31) / 32; // one warp minimum
-    searchKernel<<<searchBlocks, 32>>>(d_board, d_moves, numMoves, d_searchScores, searchDepth);
+    if (serialRoot) {
+      serialRootSearchKernel<<<1, 1>>>(d_board, d_moves, numMoves, d_searchScores, searchDepth);
+    } else {
+      int searchBlocks = (numMoves + 31) / 32; // one warp minimum
+      searchKernel<<<searchBlocks, 32>>>(d_board, d_moves, numMoves, d_searchScores, searchDepth);
+    }
     cudaDeviceSynchronize();
 
     cudaMemcpy(h_searchScores, d_searchScores, numMoves * sizeof(float), cudaMemcpyDeviceToHost);
