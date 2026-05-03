@@ -28,6 +28,8 @@ function parseArgs(argv) {
     gpuTraincarEval: false,
     gpuSerialRoot: false,
     gpuRootOrder: false,
+    gpuFamilyDispatch: false,
+    gpuTimeoutRootProxy: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -47,6 +49,8 @@ function parseArgs(argv) {
     else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
     else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
     else if (arg === '--gpu-root-order') options.gpuRootOrder = true;
+    else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
+    else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
   }
 
   if (!options.fighter) {
@@ -187,7 +191,7 @@ function buildCpuInputLines(fighterPath, fens) {
   return { usable, skipped, input };
 }
 
-function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal, gpuTraincarEval, gpuSerialRoot, gpuRootOrder) {
+function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal, gpuTraincarEval, gpuSerialRoot, gpuRootOrder, gpuFamilyDispatch, gpuTimeoutRootProxy) {
   if (!existsSync(GPU_FORGE_BIN)) throw new Error(`Missing gpu_forge binary: ${GPU_FORGE_BIN}`);
   if (!existsSync(blobPath)) throw new Error(`Missing fighter blob: ${blobPath}`);
   const forgeArgs = [String(configs), String(sims), '--fighter-blob', blobPath];
@@ -197,6 +201,8 @@ function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFul
   if (gpuTraincarEval) forgeArgs.push('--traincar-eval');
   if (gpuSerialRoot) forgeArgs.push('--serial-root');
   if (gpuRootOrder) forgeArgs.push('--root-order');
+  if (gpuFamilyDispatch) forgeArgs.push('--family-dispatch');
+  if (gpuTimeoutRootProxy) forgeArgs.push('--timeout-root-proxy');
   const command = timeoutMs > 0
     ? ['timeout', '--kill-after=10s', `${Math.ceil(timeoutMs / 1000)}s`, GPU_FORGE_BIN, ...forgeArgs]
     : [GPU_FORGE_BIN, ...forgeArgs];
@@ -236,7 +242,7 @@ function main() {
 
   const corpus = buildCorpus(options.samples);
   const { usable, skipped, input } = buildCpuInputLines(fighterPath, corpus);
-  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuSerialRoot, options.gpuRootOrder);
+  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuSerialRoot, options.gpuRootOrder, options.gpuFamilyDispatch, options.gpuTimeoutRootProxy);
   const summary = gpu.summary || {};
 
   const comparable = Number(summary.comparablePositions || 0);
@@ -253,6 +259,7 @@ function main() {
   if (agreementRate < options.minAccuracy) failures.push(`agreement_below_${options.minAccuracy}`);
   if (skipped.length > 0) warnings.push(`cpu_skipped_${skipped.length}`);
   if (Number(summary.skippedEngineMoveMissing || 0) > 0) warnings.push('gpu_missing_engine_move_for_some_positions');
+  if (summary.timeoutRootProxy) warnings.push('timeout_root_proxy_condition_not_strict_parity');
 
   const report = {
     ok: failures.length === 0,
@@ -272,6 +279,8 @@ function main() {
       gpuTraincarEval: options.gpuTraincarEval,
       gpuSerialRoot: options.gpuSerialRoot,
       gpuRootOrder: options.gpuRootOrder,
+      gpuFamilyDispatch: options.gpuFamilyDispatch,
+      gpuTimeoutRootProxy: options.gpuTimeoutRootProxy,
     },
     corpus: {
       size: corpus.length,
@@ -287,6 +296,10 @@ function main() {
       agreementRate,
       coverage,
       fixRate: Number(summary.fixRate || 0),
+      searchDepth: Number(summary.searchDepth || 0),
+      fighterFamily: summary.fighterFamily || 'unknown',
+      familyDispatch: Boolean(summary.familyDispatch),
+      timeoutRootProxy: Boolean(summary.timeoutRootProxy),
       skippedNoMoves: Number(summary.skippedNoMoves || 0),
       skippedEngineMoveMissing: Number(summary.skippedEngineMoveMissing || 0),
     },
@@ -314,6 +327,9 @@ function main() {
     comparablePositions: report.gpuSummary.comparablePositions,
     agreementRate: report.gpuSummary.agreementRate,
     coverage: report.gpuSummary.coverage,
+    fighterFamily: report.gpuSummary.fighterFamily,
+    familyDispatch: report.gpuSummary.familyDispatch,
+    timeoutRootProxy: report.gpuSummary.timeoutRootProxy,
     failures: report.failures,
     warnings: report.warnings,
     jsonPath,

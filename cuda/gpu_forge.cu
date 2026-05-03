@@ -1589,6 +1589,8 @@ int main(int argc, char** argv) {
   int traincarEval = 0;
   int serialRoot = 0;
   int rootOrder = 0;
+  int familyDispatch = 0;
+  int timeoutRootProxy = 0;
   int positional = 0;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--fighter-blob") == 0) { i++; continue; }
@@ -1616,6 +1618,14 @@ int main(int argc, char** argv) {
     }
     if (strcmp(argv[i], "--root-order") == 0) {
       rootOrder = 1;
+      continue;
+    }
+    if (strcmp(argv[i], "--family-dispatch") == 0) {
+      familyDispatch = 1;
+      continue;
+    }
+    if (strcmp(argv[i], "--timeout-root-proxy") == 0) {
+      timeoutRootProxy = 1;
       continue;
     }
     if (argv[i][0] == '-') continue;
@@ -1648,6 +1658,7 @@ int main(int argc, char** argv) {
       }
     }
   }
+  if (familyDispatch && fighterFamily == FIGHTER_FAMILY_RAZORBLADE_II) timeoutRootProxy = 1;
   fprintf(stderr, "[dojo] fighter family: %s\n", fighterFamilyName(fighterFamily));
   fprintf(stderr, "[dojo] search depth: %d\n", searchDepth);
   if (fullQeval) fprintf(stderr, "[dojo] full qsearch eval: enabled\n");
@@ -1655,6 +1666,8 @@ int main(int argc, char** argv) {
   if (traincarEval) fprintf(stderr, "[dojo] traincar eval bridge: enabled\n");
   if (serialRoot) fprintf(stderr, "[dojo] serial root search: enabled\n");
   if (rootOrder) fprintf(stderr, "[dojo] root move ordering: enabled\n");
+  if (familyDispatch) fprintf(stderr, "[dojo] source-family dispatch: enabled\n");
+  if (timeoutRootProxy) fprintf(stderr, "[dojo] timeout root proxy: enabled\n");
 
   // Upload fighter knobs to constant memory for search evaluation
   cudaMemcpyToSymbol(C_FIGHTER_KNOBS, defaults, KNOB_COUNT * sizeof(float));
@@ -1824,6 +1837,15 @@ int main(int argc, char** argv) {
       }
     }
     if (bestIdx < 0 || bestScore <= -99998.0f) { skippedNoLegalRootScore++; continue; }
+    if (timeoutRootProxy) {
+      for (int i = 0; i < numMoves; i++) {
+        if (h_searchScores[i] > -99998.0f) {
+          bestIdx = i;
+          bestScore = h_searchScores[i];
+          break;
+        }
+      }
+    }
 
     // Convert search best move to UCI
     char searchMove[8];
@@ -1912,6 +1934,9 @@ int main(int argc, char** argv) {
   printf("\"elapsed\":%.2f,\"posPerSec\":%.1f,", elapsed, totalPos > 0 ? totalPos/elapsed : 0.0);
   printf("\"searchDepth\":%d,", searchDepth);
   printf("\"fighterFamily\":\"%s\",", fighterFamilyName(fighterFamily));
+  printf("\"familyDispatch\":%s,\"timeoutRootProxy\":%s,",
+    familyDispatch ? "true" : "false",
+    timeoutRootProxy ? "true" : "false");
   printf("\"verdict\":\"%s\",",
     totalPos==0 ? (agreements > 0 ? "ALL_AGREE" : "NO_DATA") :
     totalFixable*100/totalPos >= 70 ? "ARCHITECTURE_FINE" :

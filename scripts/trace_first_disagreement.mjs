@@ -23,6 +23,8 @@ function parseArgs(argv) {
     gpuTraincarEval: false,
     gpuSerialRoot: false,
     gpuRootOrder: false,
+    gpuFamilyDispatch: false,
+    gpuTimeoutRootProxy: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -41,6 +43,8 @@ function parseArgs(argv) {
     else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
     else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
     else if (arg === '--gpu-root-order') options.gpuRootOrder = true;
+    else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
+    else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
 
@@ -102,6 +106,8 @@ function runGpuTrace(options, fighterBlob, fen, cpuMove, legalMoves) {
   if (options.gpuTraincarEval) forgeArgs.push('--traincar-eval');
   if (options.gpuSerialRoot) forgeArgs.push('--serial-root');
   if (options.gpuRootOrder) forgeArgs.push('--root-order');
+  if (options.gpuFamilyDispatch) forgeArgs.push('--family-dispatch');
+  if (options.gpuTimeoutRootProxy) forgeArgs.push('--timeout-root-proxy');
   const command = options.timeoutMs > 0
     ? ['timeout', '--kill-after=10s', `${Math.ceil(options.timeoutMs / 1000)}s`, GPU_FORGE_BIN, ...forgeArgs]
     : [GPU_FORGE_BIN, ...forgeArgs];
@@ -210,6 +216,8 @@ function main() {
       gpuTraincarEval: options.gpuTraincarEval,
       gpuSerialRoot: options.gpuSerialRoot,
       gpuRootOrder: options.gpuRootOrder,
+      gpuFamilyDispatch: options.gpuFamilyDispatch,
+      gpuTimeoutRootProxy: options.gpuTimeoutRootProxy,
     },
     cpu,
     gpu: {

@@ -31,6 +31,8 @@ function parseArgs(argv) {
     gpuTraincarEval: false,
     gpuSerialRoot: false,
     gpuRootOrder: false,
+    gpuFamilyDispatch: false,
+    gpuTimeoutRootProxy: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -47,6 +49,8 @@ function parseArgs(argv) {
     else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
     else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
     else if (arg === '--gpu-root-order') options.gpuRootOrder = true;
+    else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
+    else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
   }
   return options;
 }
@@ -69,6 +73,8 @@ function runOne(entry, options) {
   if (options.gpuTraincarEval) args.push('--gpu-traincar-eval');
   if (options.gpuSerialRoot) args.push('--gpu-serial-root');
   if (options.gpuRootOrder) args.push('--gpu-root-order');
+  if (options.gpuFamilyDispatch) args.push('--gpu-family-dispatch');
+  if (options.gpuTimeoutRootProxy) args.push('--gpu-timeout-root-proxy');
 
   try {
     const raw = execFileSync(process.execPath, args, {
@@ -109,15 +115,19 @@ function buildMarkdown(summary) {
   lines.push('');
   lines.push(`Generated: ${summary.generatedAt}`);
   lines.push('');
-  lines.push('| Fighter | Status | Agreement | Coverage | Comparable | Report |');
-  lines.push('|---|---:|---:|---:|---:|---|');
+  lines.push('| Fighter | Status | Agreement | Coverage | Comparable | Condition | Report |');
+  lines.push('|---|---:|---:|---:|---:|---|---|');
   for (const item of summary.results) {
     const status = item.ok ? 'PASS' : 'FAIL';
     const agreement = item.agreementRate == null ? 'n/a' : `${(item.agreementRate * 100).toFixed(1)}%`;
     const coverage = item.coverage == null ? 'n/a' : `${(item.coverage * 100).toFixed(1)}%`;
     const comparable = item.comparablePositions ?? 'n/a';
+    const condition = item.gpuSummary?.timeoutRootProxy ||
+      item.warnings?.includes('timeout_root_proxy_condition_not_strict_parity')
+      ? 'proxy'
+      : 'strict';
     const report = item.mdPath ? basename(item.mdPath) : 'n/a';
-    lines.push(`| ${item.name} | ${status} | ${agreement} | ${coverage} | ${comparable} | ${report} |`);
+    lines.push(`| ${item.name} | ${status} | ${agreement} | ${coverage} | ${comparable} | ${condition} | ${report} |`);
   }
   lines.push('');
   lines.push(`Pass: ${summary.passCount}/${summary.total}`);
