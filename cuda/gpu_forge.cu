@@ -1482,11 +1482,13 @@ int main(int argc, char** argv) {
     } else {
       fprintf(stderr, "[dojo] loaded fighter blob %s\n", fighterBlobPath);
     }
-    if (loadFlatKnobsFromBlob(fighterBlobPath, flatKnobs, 64)) {
-      fprintf(stderr, "[dojo] loaded flat fighter knobs %s\n", fighterBlobPath);
-    } else if (traincarEval) {
-      fprintf(stderr, "[dojo] warning: failed to load flat fighter knobs %s; traincar eval bridge disabled\n", fighterBlobPath);
-      traincarEval = 0;
+    if (traincarEval) {
+      if (loadFlatKnobsFromBlob(fighterBlobPath, flatKnobs, 64)) {
+        fprintf(stderr, "[dojo] loaded flat fighter knobs %s\n", fighterBlobPath);
+      } else {
+        fprintf(stderr, "[dojo] warning: failed to load flat fighter knobs %s; traincar eval bridge disabled\n", fighterBlobPath);
+        traincarEval = 0;
+      }
     }
   }
   fprintf(stderr, "[dojo] search depth: %d\n", searchDepth);
