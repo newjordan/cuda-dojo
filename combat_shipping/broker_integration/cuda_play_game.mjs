@@ -14,6 +14,21 @@
 //
 // Selection at runtime: game-worker.js imports either this module or
 // sandboxed-referee.js based on USE_CUDA_REFEREE env.
+//
+// ---------------------------------------------------------------------
+// Arbiter version parity
+// ---------------------------------------------------------------------
+// CUDA_ARBITER_PARITY_VERSION declares the prod arbiter version this
+// drop-in is byte-for-byte parity-tested against. The broker's
+// `x-arbiter-version` minimum-version gate is enforced by prod's
+// api-client.js, which reads from match-processor/package.json — that
+// header is forwarded for every request (cuda path included) because
+// game-worker.js uses prod's api-client.js regardless of which playGame
+// implementation is selected. We re-declare the constant here so the
+// cuda module advertises (in source) what gate it's expected to clear,
+// and so a parity guard can compare against the prod package.json at
+// runtime if desired.
+export const CUDA_ARBITER_PARITY_VERSION = '1.6.0';
 
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync, mkdtempSync, rmSync, existsSync, statSync } from 'node:fs';
@@ -160,13 +175,24 @@ export async function playGame(opts) {
         const d = payload.fighter_diag;
         const stderr = (d.stderr_tail || '').slice(-1000).replace(/\n/g, ' | ');
         const stdout = (d.stdout_tail || '').slice(-200).replace(/\n/g, ' | ');
+        // For illegal-outcome triage: show what UCI the fighter returned
+        // and what dojo_ref thought the legal set was. The legal_sample
+        // tells us whether pos is computing for the right side / position.
+        const illegalExtra = payload.reason === 'illegal'
+            ? ` uci_returned=${d.uci_returned || '?'} legal_count=${d.legal_count ?? '?'} `
+            + `legal_sample=${JSON.stringify((d.legal_sample || []).slice(0, 8))} `
+            // Full history from startpos so the offline CPU-bridge replay
+            // (check_illegal.mjs) can validate without truncation.
+            + `move_history=${JSON.stringify(payload.moves || [])}`
+            : '';
         // eslint-disable-next-line no-console
         console.error(
             `[fighter_diag] match=${matchId} reason=${payload.reason} side=${d.side || '?'} ` +
             `outcome=${d.outcome || '?'} rc=${d.returncode === undefined ? '-' : d.returncode} ` +
-            `container=${d.container || '?'} ` +
+            `container=${d.container || '?'} plies=${payload.plies ?? '?'} ` +
             (d.after_retry ? 'after_retry=1 ' : '') +
-            `stderr=${stderr} stdout=${stdout}`
+            illegalExtra +
+            ` stderr=${stderr} stdout=${stdout}`
         );
     }
 

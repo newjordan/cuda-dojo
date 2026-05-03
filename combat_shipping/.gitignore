@@ -9,3 +9,5 @@ __pycache__/
 results/compare_*/
 results/shadow_*.json
 results/*.log
+results/validation_*.json
+results/validation_live_*/

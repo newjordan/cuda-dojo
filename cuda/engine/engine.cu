@@ -43,6 +43,10 @@ constexpr int EVAL_PROBE_REQUESTS = 3;
 
 Position g_current_position{};
 bool g_have_position = false;
+// Per-ply zobrist history for threefold-repetition detection at root.
+// Rebuilt every set_position() call (UCI sends the full move list each ply).
+// Entry [0] is the starting FEN's hash; entry [k] is the hash after move k.
+std::vector<uint64_t> g_position_history;
 
 constexpr uint32_t SCHEDULER_PROBE_TASKS = 4u;
 
@@ -493,6 +497,10 @@ bool set_position(const std::string& fen,
         return false;
     }
 
+    if (!zobrist_initialized()) init_zobrist();
+    g_position_history.clear();
+    g_position_history.push_back(zobrist_full(pos));
+
     for (const std::string& uci_move : moves) {
         Move mv = 0;
         if (!decode_uci_move(pos, uci_move, &mv)) {
@@ -501,6 +509,7 @@ bool set_position(const std::string& fen,
             return false;
         }
         h_make_move(&pos, mv);
+        g_position_history.push_back(zobrist_full(pos));
     }
 
     g_current_position = pos;
@@ -512,6 +521,20 @@ uci::SearchResult search(const uci::SearchLimits& limits,
                          uci::InfoCallback info_cb) {
     if (!g_have_position) {
         set_position(STARTPOS_FEN, {});
+    }
+    // Threefold-repetition gate at root: if the current position's zobrist
+    // hash has occurred ≥3 times in the per-ply history, the game is drawn
+    // by repetition. Return UCI null-move "0000" so the host driver treats
+    // the game as terminal, the same way mate/stalemate currently do.
+    if (!g_position_history.empty()) {
+        uint64_t cur = g_position_history.back();
+        int count = 0;
+        for (uint64_t h : g_position_history) if (h == cur) ++count;
+        if (count >= 3) {
+            uci::SearchResult result;
+            result.bestmove = "0000";
+            return result;
+        }
     }
     return search_root(g_current_position, limits, info_cb);
 }

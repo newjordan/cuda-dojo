@@ -18,3 +18,6 @@ tests/test_tt
 tests/test_makeunmake_symmetry
 tests/test_perft
 artifacts/
+
+# gpu_arena_loop receipts (per-run timestamped tallies; outputs not source).
+arena_loop_*.json

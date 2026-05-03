@@ -1,0 +1,47 @@
+{
+  "_doc": "Numerical bar the cuda_combat_arbiter must clear to be presentable as a drop-in replacement for the AgentChess production arbiter. Each gate has measurable target(s); run_validation.py computes pass/fail per gate. Tier 1 = rule correctness, Tier 2 = adds daemon protocol, Tier 3 = adds live wall-clock parity. Smoke and full are sample-size profiles.",
+
+  "G1_replay_parity": {
+    "description": "Both referees agree on legality + same terminal kind for every move on a sample of arbiter-produced PGN games.",
+    "tier": 1,
+    "smoke_n": 200,
+    "full_n": 5000,
+    "min_referee_parity_rate": 1.0,
+    "min_replayable_subset_rate": 1.0,
+    "pgn_corpus": "/srv/models-hdd/chess-games/games.pgn"
+  },
+
+  "G3_bench_coalescer": {
+    "description": "BatchCoalescer in-process: parity vs serial, ≥1.5x FFI speedup at N=8 concurrency, no deadlock at N=16.",
+    "tier": 1,
+    "min_speedup": 1.5
+  },
+
+  "G4_daemon_smoke": {
+    "description": "Batched daemon completes one real fighter game over its socket without errors.",
+    "tier": 2,
+    "max_plies": 80,
+    "max_unexpected_errors": 0
+  },
+
+  "G5_daemon_concurrent": {
+    "description": "Batched daemon serves N concurrent games over its socket without errors or hangs.",
+    "tier": 2,
+    "smoke_n": 4,
+    "full_n": 20,
+    "max_plies": 60,
+    "max_unexpected_errors": 0
+  },
+
+  "G6_live_wall_ratio": {
+    "description": "Live-mode end-to-end wall-clock ratio (arbiter / cuda) over identical fighter pairs at concurrency=1, lifted caps. Caps wide because fighters are non-deterministic; we only check the cuda referee is not dramatically slower or faster.",
+    "tier": 3,
+    "smoke_n": 4,
+    "full_n": 20,
+    "min_ratio": 0.85,
+    "max_ratio": 1.20,
+    "agent_cpus": "4",
+    "agent_memory": "1g",
+    "max_plies": 240
+  }
+}
