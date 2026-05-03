@@ -176,13 +176,23 @@ export function noteDojoSearch(state, depth, tuning, source) {
 export function noteDojoIteration(state, depth, score, timeMs, nodes) {
   if (!state.trace) return;
   state.trace.maxDepth = Math.max(state.trace.maxDepth, depth);
+  const existing = state.trace.iterations.find((it) => it.depth === depth);
+  if (existing) {
+    existing.score = score;
+    existing.timeMs = timeMs;
+    existing.nodes = nodes;
+    return;
+  }
   state.trace.iterations.push({ depth, score, timeMs, nodes, rootCandidates: [] });
 }
 
 export function noteDojoRootCandidate(state, depth, move, score, meta = {}) {
   if (!state.trace) return;
-  const iter = state.trace.iterations.find((it) => it.depth === depth);
-  if (!iter) return;
+  let iter = state.trace.iterations.find((it) => it.depth === depth);
+  if (!iter) {
+    iter = { depth, score: 0, timeMs: 0, nodes: 0, rootCandidates: [] };
+    state.trace.iterations.push(iter);
+  }
   const list = iter.rootCandidates;
   const existing = list.find((c) => c.move === move);
   const next = {

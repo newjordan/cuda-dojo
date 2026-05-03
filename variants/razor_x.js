@@ -1182,10 +1182,10 @@ function iterativeDeepening(pos) {
 
     if (searchAborted && depth > 1) break;
 
+    const elapsed = Date.now() - searchStartTime;
     prevScore = score;
     finalDepth = depth;
-    noteDojoIteration(razorXState, depth, tuning, score);
-    const elapsed = Date.now() - searchStartTime;
+    noteDojoIteration(razorXState, depth, score, elapsed, nodes);
     const runwayFactor = Math.max(1.45, 2.2 - Math.max(0, layerTemperature(razorXState, depth + 1)) * 0.03);
 
     // Don't start next iteration if we've used > 45% of time

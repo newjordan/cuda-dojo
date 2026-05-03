@@ -5322,13 +5322,23 @@ const __TRAINCAR_BACKEND__ = (() => {
   function noteDojoIteration(state, depth, score, timeMs, nodes) {
     if (!state.trace) return;
     state.trace.maxDepth = Math.max(state.trace.maxDepth, depth);
+    const existing = state.trace.iterations.find((it) => it.depth === depth);
+    if (existing) {
+      existing.score = score;
+      existing.timeMs = timeMs;
+      existing.nodes = nodes;
+      return;
+    }
     state.trace.iterations.push({ depth, score, timeMs, nodes, rootCandidates: [] });
   }
 
   function noteDojoRootCandidate(state, depth, move, score, meta = {}) {
     if (!state.trace) return;
-    const iter = state.trace.iterations.find((it) => it.depth === depth);
-    if (!iter) return;
+    let iter = state.trace.iterations.find((it) => it.depth === depth);
+    if (!iter) {
+      iter = { depth, score: 0, timeMs: 0, nodes: 0, rootCandidates: [] };
+      state.trace.iterations.push(iter);
+    }
     const list = iter.rootCandidates;
     const existing = list.find((c) => c.move === move);
     const next = {
@@ -6772,10 +6782,10 @@ function iterativeDeepening(pos) {
 
     if (searchAborted && depth > 1) break;
 
+    const elapsed = Date.now() - searchStartTime;
     prevScore = score;
     finalDepth = depth;
-    noteDojoIteration(fortressXState, depth, tuning, score);
-    const elapsed = Date.now() - searchStartTime;
+    noteDojoIteration(fortressXState, depth, score, elapsed, nodes);
     const runwayFactor = Math.max(1.6, 2.3 - Math.max(0, layerTemperature(fortressXState, depth + 1)) * 0.03);
 
     // Don't start next iteration if we've used > 45% of time

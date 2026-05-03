@@ -1261,10 +1261,10 @@ function iterativeDeepening(pos) {
 
     if (searchAborted && depth > 1) break;
 
+    const elapsed = Date.now() - searchStartTime;
     prevScore = score;
     finalDepth = depth;
-    noteDojoIteration(queenGuardXState, depth, tuning, score);
-    const elapsed = Date.now() - searchStartTime;
+    noteDojoIteration(queenGuardXState, depth, score, elapsed, nodes);
     const runwayFactor = Math.max(1.55, 2.25 - Math.max(0, layerTemperature(queenGuardXState, depth + 1)) * 0.03);
 
     // Don't start next iteration if we've used > 45% of time
