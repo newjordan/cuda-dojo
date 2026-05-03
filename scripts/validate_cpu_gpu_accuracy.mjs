@@ -27,6 +27,7 @@ function parseArgs(argv) {
     gpuFilterLegal: false,
     gpuTraincarEval: false,
     gpuSerialRoot: false,
+    gpuRootOrder: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -45,6 +46,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
     else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
     else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
+    else if (arg === '--gpu-root-order') options.gpuRootOrder = true;
   }
 
   if (!options.fighter) {
@@ -185,7 +187,7 @@ function buildCpuInputLines(fighterPath, fens) {
   return { usable, skipped, input };
 }
 
-function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal, gpuTraincarEval, gpuSerialRoot) {
+function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal, gpuTraincarEval, gpuSerialRoot, gpuRootOrder) {
   if (!existsSync(GPU_FORGE_BIN)) throw new Error(`Missing gpu_forge binary: ${GPU_FORGE_BIN}`);
   if (!existsSync(blobPath)) throw new Error(`Missing fighter blob: ${blobPath}`);
   const forgeArgs = [String(configs), String(sims), '--fighter-blob', blobPath];
@@ -194,6 +196,7 @@ function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFul
   if (gpuFilterLegal) forgeArgs.push('--filter-legal');
   if (gpuTraincarEval) forgeArgs.push('--traincar-eval');
   if (gpuSerialRoot) forgeArgs.push('--serial-root');
+  if (gpuRootOrder) forgeArgs.push('--root-order');
   const command = timeoutMs > 0
     ? ['timeout', '--kill-after=10s', `${Math.ceil(timeoutMs / 1000)}s`, GPU_FORGE_BIN, ...forgeArgs]
     : [GPU_FORGE_BIN, ...forgeArgs];
@@ -233,7 +236,7 @@ function main() {
 
   const corpus = buildCorpus(options.samples);
   const { usable, skipped, input } = buildCpuInputLines(fighterPath, corpus);
-  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuSerialRoot);
+  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuSerialRoot, options.gpuRootOrder);
   const summary = gpu.summary || {};
 
   const comparable = Number(summary.comparablePositions || 0);
@@ -268,6 +271,7 @@ function main() {
       gpuFilterLegal: options.gpuFilterLegal,
       gpuTraincarEval: options.gpuTraincarEval,
       gpuSerialRoot: options.gpuSerialRoot,
+      gpuRootOrder: options.gpuRootOrder,
     },
     corpus: {
       size: corpus.length,

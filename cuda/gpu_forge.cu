@@ -316,6 +316,52 @@ static void moveToUci(const Move* move, char* out, size_t outSize) {
   }
 }
 
+static int hostMoveCapturedPiece(const Board* board, const Move* move) {
+  int captured = board->pieces[move->to];
+  int moving = board->pieces[move->from];
+  int movingType = moving & 7;
+  int movingIsW = (moving & 8) == 0;
+  if (!captured && movingType == PAWN && move->to == board->epSq) {
+    int capSq = movingIsW ? move->to + 8 : move->to - 8;
+    if (capSq >= 0 && capSq < 64) captured = board->pieces[capSq];
+  }
+  return captured;
+}
+
+static int hostRootMoveScore(const Board* board, const Move* move) {
+  int moving = board->pieces[move->from];
+  int movingType = moving & 7;
+  int promo = move->promo;
+  if (!promo && movingType == PAWN) {
+    int toRank = move->to / 8;
+    int movingIsW = (moving & 8) == 0;
+    if ((movingIsW && toRank == 0) || (!movingIsW && toRank == 7)) promo = QUEEN;
+  }
+  if (promo) return 9000000 + (promo == QUEEN ? 1000 : 0);
+
+  int captured = hostMoveCapturedPiece(board, move);
+  if (captured) return 1000000 + ((captured & 7) * 100) - movingType;
+
+  return 0;
+}
+
+static void orderRootMovesHost(const Board* board, Move* moves, int count) {
+  int scores[MAX_MOVES];
+  for (int i = 0; i < count; i++) scores[i] = hostRootMoveScore(board, &moves[i]);
+  for (int i = 1; i < count; i++) {
+    Move mv = moves[i];
+    int sc = scores[i];
+    int j = i - 1;
+    while (j >= 0 && scores[j] < sc) {
+      moves[j + 1] = moves[j];
+      scores[j + 1] = scores[j];
+      j--;
+    }
+    moves[j + 1] = mv;
+    scores[j + 1] = sc;
+  }
+}
+
 // ============================================================================
 // HOST: Runtime fighter blob loader
 // ============================================================================
@@ -1478,6 +1524,7 @@ int main(int argc, char** argv) {
   int filterLegal = 0;
   int traincarEval = 0;
   int serialRoot = 0;
+  int rootOrder = 0;
   int positional = 0;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--fighter-blob") == 0) { i++; continue; }
@@ -1501,6 +1548,10 @@ int main(int argc, char** argv) {
     }
     if (strcmp(argv[i], "--serial-root") == 0) {
       serialRoot = 1;
+      continue;
+    }
+    if (strcmp(argv[i], "--root-order") == 0) {
+      rootOrder = 1;
       continue;
     }
     if (argv[i][0] == '-') continue;
@@ -1537,6 +1588,7 @@ int main(int argc, char** argv) {
   if (filterLegal) fprintf(stderr, "[dojo] legal child filter: enabled\n");
   if (traincarEval) fprintf(stderr, "[dojo] traincar eval bridge: enabled\n");
   if (serialRoot) fprintf(stderr, "[dojo] serial root search: enabled\n");
+  if (rootOrder) fprintf(stderr, "[dojo] root move ordering: enabled\n");
 
   // Upload fighter knobs to constant memory for search evaluation
   cudaMemcpyToSymbol(C_FIGHTER_KNOBS, defaults, KNOB_COUNT * sizeof(float));
@@ -1667,6 +1719,7 @@ int main(int argc, char** argv) {
     }
 
     if (numMoves == 0) { skippedNoMoves++; continue; }
+    if (rootOrder) orderRootMovesHost(&board, h_moves, numMoves);
 
     // Find engine move index
     int engIdx = -1;

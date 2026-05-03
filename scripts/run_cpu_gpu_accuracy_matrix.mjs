@@ -30,6 +30,7 @@ function parseArgs(argv) {
     gpuFilterLegal: false,
     gpuTraincarEval: false,
     gpuSerialRoot: false,
+    gpuRootOrder: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -45,6 +46,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
     else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
     else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
+    else if (arg === '--gpu-root-order') options.gpuRootOrder = true;
   }
   return options;
 }
@@ -66,6 +68,7 @@ function runOne(entry, options) {
   if (options.gpuFilterLegal) args.push('--gpu-filter-legal');
   if (options.gpuTraincarEval) args.push('--gpu-traincar-eval');
   if (options.gpuSerialRoot) args.push('--gpu-serial-root');
+  if (options.gpuRootOrder) args.push('--gpu-root-order');
 
   try {
     const raw = execFileSync(process.execPath, args, {
