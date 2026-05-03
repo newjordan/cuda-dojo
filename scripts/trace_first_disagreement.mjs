@@ -20,6 +20,7 @@ function parseArgs(argv) {
     gpuDepth: null,
     gpuFullQeval: false,
     gpuFilterLegal: false,
+    gpuTraincarEval: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -35,6 +36,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-depth') options.gpuDepth = Math.max(1, Math.min(12, Number(argv[++i] || 0)));
     else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
+    else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
 
@@ -93,6 +95,7 @@ function runGpuTrace(options, fighterBlob, fen, cpuMove, legalMoves) {
   if (options.gpuDepth != null) forgeArgs.push('--depth', String(options.gpuDepth));
   if (options.gpuFullQeval) forgeArgs.push('--full-qeval');
   if (options.gpuFilterLegal) forgeArgs.push('--filter-legal');
+  if (options.gpuTraincarEval) forgeArgs.push('--traincar-eval');
   const command = options.timeoutMs > 0
     ? ['timeout', '--kill-after=10s', `${Math.ceil(options.timeoutMs / 1000)}s`, GPU_FORGE_BIN, ...forgeArgs]
     : [GPU_FORGE_BIN, ...forgeArgs];
@@ -198,6 +201,7 @@ function main() {
       gpuDepth: options.gpuDepth,
       gpuFullQeval: options.gpuFullQeval,
       gpuFilterLegal: options.gpuFilterLegal,
+      gpuTraincarEval: options.gpuTraincarEval,
     },
     cpu,
     gpu: {

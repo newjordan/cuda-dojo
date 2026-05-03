@@ -198,8 +198,10 @@ __constant__ int C_MVV_VAL[7] = {0, 100, 320, 330, 500, 900, 20000};
 
 // Fighter personality knobs — loaded at runtime from blob
 __constant__ float C_FIGHTER_KNOBS[KNOB_COUNT];
+__constant__ float C_FLAT_KNOBS[64];
 __constant__ int C_FULL_QEVAL;
 __constant__ int C_FILTER_LEGAL;
+__constant__ int C_TRAINCAR_EVAL;
 
 // ============================================================================
 // DATA STRUCTURES
@@ -371,6 +373,27 @@ static bool loadLegacyDefaultsFromBlob(const char* blobPath, float* out, int cou
   for (int i = DOJO_ACTIVE_FIGHTER_LEGACY44_COUNT; i < count; i++)
     out[i] = legacy44[DOJO_ACTIVE_FIGHTER_LEGACY44_COUNT - 1];
   return true;
+}
+
+static bool loadFlatKnobsFromBlob(const char* blobPath, float* out, int count) {
+  if (!blobPath || !*blobPath) return false;
+  std::ifstream stream(blobPath, std::ios::in | std::ios::binary);
+  if (!stream.good()) return false;
+  stream.seekg(0, std::ios::end);
+  const std::streamoff size = stream.tellg();
+  if (size <= 0) return false;
+  std::string text;
+  text.resize((size_t)size);
+  stream.seekg(0, std::ios::beg);
+  stream.read(&text[0], size);
+  if (!stream.good() && !stream.eof()) return false;
+  const char* root = text.c_str();
+  const char* flat = strstr(root, "\"flatKnobs\"");
+  if (!flat) return false;
+  const char* open = strchr(flat, '[');
+  if (!open) return false;
+  const int parsed = parseFloatArray(open + 1, out, count);
+  return parsed > 0;
 }
 
 // ============================================================================
@@ -1042,6 +1065,30 @@ __device__ float evalFast(Board* b) {
   return b->side == 0 ? tapered : -tapered;
 }
 
+__device__ int traincarDepthBand(int depth) {
+  if (depth <= 1) return 0;
+  if (depth <= 3) return 1;
+  if (depth <= 5) return 2;
+  if (depth <= 8) return 3;
+  return 4;
+}
+
+__device__ float evalTraincarBridge(int ply) {
+  float evalBridgePly = C_FLAT_KNOBS[42] > 0.0f ? C_FLAT_KNOBS[42] : 4.0f;
+  if ((float)ply > evalBridgePly) return 0.0f;
+  int band = traincarDepthBand(ply);
+  float divisor = C_FLAT_KNOBS[43] > 0.0f ? C_FLAT_KNOBS[43] : 1.0f;
+  float aggression = C_FLAT_KNOBS[5 + band] > 0.0f ? C_FLAT_KNOBS[5 + band] : 1.0f;
+  float temp = C_FLAT_KNOBS[band];
+  return roundf((temp / divisor) * aggression);
+}
+
+__device__ float evalCpuTraincar(Board* b, int ply) {
+  float score = evalFast(b);
+  float bridge = evalTraincarBridge(ply);
+  return score + (b->side == 0 ? bridge : -bridge);
+}
+
 // ============================================================================
 // DEVICE: MVV-LVA move ordering — captures first, sorted by victim value
 // ============================================================================
@@ -1076,8 +1123,8 @@ __device__ void orderMoves(Board* b, Move* moves, int count) {
 // DEVICE: Quiescence search — only captures, prevents horizon effect
 // ============================================================================
 
-__device__ float quiesce(Board* b, float alpha, float beta, int depth) {
-  float standPat = C_FULL_QEVAL ? evalPosition(b) : evalFast(b);
+__device__ float quiesce(Board* b, float alpha, float beta, int depth, int ply) {
+  float standPat = C_TRAINCAR_EVAL ? evalCpuTraincar(b, ply) : (C_FULL_QEVAL ? evalPosition(b) : evalFast(b));
   if (depth <= 0) return standPat;
   if (standPat >= beta) return beta;
   if (standPat > alpha) alpha = standPat;
@@ -1101,7 +1148,7 @@ __device__ float quiesce(Board* b, float alpha, float beta, int depth) {
     Board child = *b;
     makeMove(&child, &moves[i]);
     if (C_FILTER_LEGAL && isInCheck(&child, 1 - child.side)) continue;
-    float score = -quiesce(&child, -beta, -alpha, depth - 1);
+    float score = -quiesce(&child, -beta, -alpha, depth - 1, ply + 1);
     if (score >= beta) return beta;
     if (score > alpha) alpha = score;
   }
@@ -1112,8 +1159,8 @@ __device__ float quiesce(Board* b, float alpha, float beta, int depth) {
 // DEVICE: Negamax with alpha-beta pruning
 // ============================================================================
 
-__device__ float negamax(Board* b, int depth, float alpha, float beta) {
-  if (depth <= 0) return quiesce(b, alpha, beta, MAX_QUIESCE_DEPTH);
+__device__ float negamax(Board* b, int depth, float alpha, float beta, int ply) {
+  if (depth <= 0) return quiesce(b, alpha, beta, MAX_QUIESCE_DEPTH, ply);
 
   Move moves[MAX_MOVES];
   int nMoves = generateMoves(b, moves);
@@ -1130,7 +1177,7 @@ __device__ float negamax(Board* b, int depth, float alpha, float beta) {
     makeMove(&child, &moves[i]);
     if (C_FILTER_LEGAL && isInCheck(&child, 1 - child.side)) continue;
     movesSearched++;
-    float score = -negamax(&child, depth - 1, -beta, -alpha);
+    float score = -negamax(&child, depth - 1, -beta, -alpha, ply + 1);
     if (score > bestScore) bestScore = score;
     if (score > alpha) alpha = score;
     if (alpha >= beta) break; // beta cutoff
@@ -1163,7 +1210,7 @@ __global__ void searchKernel(
     return;
   }
   // Search from opponent's perspective, negate for our score
-  d_scores[tid] = -negamax(&child, searchDepth - 1, -99999.0f, 99999.0f);
+  d_scores[tid] = -negamax(&child, searchDepth - 1, -99999.0f, 99999.0f, 1);
 }
 
 // ============================================================================
@@ -1393,6 +1440,7 @@ int main(int argc, char** argv) {
   int searchDepth = DEFAULT_SEARCH_DEPTH;
   int fullQeval = 0;
   int filterLegal = 0;
+  int traincarEval = 0;
   int positional = 0;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--fighter-blob") == 0) { i++; continue; }
@@ -1410,6 +1458,10 @@ int main(int argc, char** argv) {
       filterLegal = 1;
       continue;
     }
+    if (strcmp(argv[i], "--traincar-eval") == 0) {
+      traincarEval = 1;
+      continue;
+    }
     if (argv[i][0] == '-') continue;
     if (positional == 0) numConfigs = atoi(argv[i]);
     positional++;
@@ -1421,6 +1473,8 @@ int main(int argc, char** argv) {
   cudaDeviceSetLimit(cudaLimitStackSize, 65536);
 
   float defaults[KNOB_COUNT] = DOJO_ACTIVE_FIGHTER_DEFAULTS44_INITIALIZER;
+  float flatKnobs[64];
+  memset(flatKnobs, 0, sizeof(flatKnobs));
   const char* fighterBlobPath = resolveFighterBlobPath(argc, argv);
   if (fighterBlobPath && *fighterBlobPath) {
     if (!loadLegacyDefaultsFromBlob(fighterBlobPath, defaults, KNOB_COUNT)) {
@@ -1428,15 +1482,24 @@ int main(int argc, char** argv) {
     } else {
       fprintf(stderr, "[dojo] loaded fighter blob %s\n", fighterBlobPath);
     }
+    if (loadFlatKnobsFromBlob(fighterBlobPath, flatKnobs, 64)) {
+      fprintf(stderr, "[dojo] loaded flat fighter knobs %s\n", fighterBlobPath);
+    } else if (traincarEval) {
+      fprintf(stderr, "[dojo] warning: failed to load flat fighter knobs %s; traincar eval bridge disabled\n", fighterBlobPath);
+      traincarEval = 0;
+    }
   }
   fprintf(stderr, "[dojo] search depth: %d\n", searchDepth);
   if (fullQeval) fprintf(stderr, "[dojo] full qsearch eval: enabled\n");
   if (filterLegal) fprintf(stderr, "[dojo] legal child filter: enabled\n");
+  if (traincarEval) fprintf(stderr, "[dojo] traincar eval bridge: enabled\n");
 
   // Upload fighter knobs to constant memory for search evaluation
   cudaMemcpyToSymbol(C_FIGHTER_KNOBS, defaults, KNOB_COUNT * sizeof(float));
+  cudaMemcpyToSymbol(C_FLAT_KNOBS, flatKnobs, 64 * sizeof(float));
   cudaMemcpyToSymbol(C_FULL_QEVAL, &fullQeval, sizeof(int));
   cudaMemcpyToSymbol(C_FILTER_LEGAL, &filterLegal, sizeof(int));
+  cudaMemcpyToSymbol(C_TRAINCAR_EVAL, &traincarEval, sizeof(int));
 
   // Allocate GPU memory
   Board *d_board; cudaMalloc(&d_board, sizeof(Board));

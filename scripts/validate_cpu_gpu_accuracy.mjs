@@ -25,6 +25,7 @@ function parseArgs(argv) {
     gpuDepth: null,
     gpuFullQeval: false,
     gpuFilterLegal: false,
+    gpuTraincarEval: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -41,6 +42,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-depth') options.gpuDepth = Math.max(1, Math.min(12, Number(argv[++i] || 0)));
     else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
+    else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
   }
 
   if (!options.fighter) {
@@ -181,13 +183,14 @@ function buildCpuInputLines(fighterPath, fens) {
   return { usable, skipped, input };
 }
 
-function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal) {
+function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal, gpuTraincarEval) {
   if (!existsSync(GPU_FORGE_BIN)) throw new Error(`Missing gpu_forge binary: ${GPU_FORGE_BIN}`);
   if (!existsSync(blobPath)) throw new Error(`Missing fighter blob: ${blobPath}`);
   const forgeArgs = [String(configs), String(sims), '--fighter-blob', blobPath];
   if (gpuDepth != null) forgeArgs.push('--depth', String(gpuDepth));
   if (gpuFullQeval) forgeArgs.push('--full-qeval');
   if (gpuFilterLegal) forgeArgs.push('--filter-legal');
+  if (gpuTraincarEval) forgeArgs.push('--traincar-eval');
   const command = timeoutMs > 0
     ? ['timeout', '--kill-after=10s', `${Math.ceil(timeoutMs / 1000)}s`, GPU_FORGE_BIN, ...forgeArgs]
     : [GPU_FORGE_BIN, ...forgeArgs];
@@ -227,7 +230,7 @@ function main() {
 
   const corpus = buildCorpus(options.samples);
   const { usable, skipped, input } = buildCpuInputLines(fighterPath, corpus);
-  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal);
+  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval);
   const summary = gpu.summary || {};
 
   const comparable = Number(summary.comparablePositions || 0);
@@ -260,6 +263,7 @@ function main() {
       gpuDepth: options.gpuDepth,
       gpuFullQeval: options.gpuFullQeval,
       gpuFilterLegal: options.gpuFilterLegal,
+      gpuTraincarEval: options.gpuTraincarEval,
     },
     corpus: {
       size: corpus.length,

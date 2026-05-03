@@ -28,6 +28,7 @@ function parseArgs(argv) {
     gpuDepth: null,
     gpuFullQeval: false,
     gpuFilterLegal: false,
+    gpuTraincarEval: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -41,6 +42,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-depth') options.gpuDepth = Math.max(1, Math.min(12, Number(argv[++i] || 0)));
     else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
+    else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
   }
   return options;
 }
@@ -60,6 +62,7 @@ function runOne(entry, options) {
   if (options.gpuDepth != null) args.push('--gpu-depth', String(options.gpuDepth));
   if (options.gpuFullQeval) args.push('--gpu-full-qeval');
   if (options.gpuFilterLegal) args.push('--gpu-filter-legal');
+  if (options.gpuTraincarEval) args.push('--gpu-traincar-eval');
 
   try {
     const raw = execFileSync(process.execPath, args, {
