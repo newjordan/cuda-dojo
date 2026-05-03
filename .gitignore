@@ -43,3 +43,5 @@ trainers/stockfish/stockfish_bin
 
 runtime/
 archive/
+fighter_accuracy/receipts/*
+!fighter_accuracy/receipts/.gitkeep

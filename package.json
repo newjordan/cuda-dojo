@@ -6,7 +6,10 @@
   "private": false,
   "scripts": {
     "oracle:sigma": "make -C cuda oracle_sigma_smoke",
-    "oracle:probe": "make -C cuda oracle_sigma_probe"
+    "oracle:probe": "make -C cuda oracle_sigma_probe",
+    "accuracy:gpu-fighter-baseline": "node fighter_accuracy/scripts/run_external_accuracy_gate.mjs --expect-fail",
+    "accuracy:gpu-fighter-snapshot": "node fighter_accuracy/scripts/run_external_accuracy_gate.mjs --skip-run --expect-fail",
+    "accuracy:gpu-fighter-gate": "node fighter_accuracy/scripts/run_external_accuracy_gate.mjs"
   },
   "repository": {
     "type": "git",

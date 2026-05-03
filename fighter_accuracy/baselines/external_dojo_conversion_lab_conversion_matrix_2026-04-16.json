@@ -1,0 +1,87 @@
+{
+  "ok": true,
+  "generatedAt": "2026-04-14T07:07:05.532Z",
+  "total": 5,
+  "passCount": 5,
+  "failed": [],
+  "options": {
+    "games": ""
+  },
+  "results": [
+    {
+      "name": "Razor X",
+      "input": "variants/razor_x.src.js",
+      "slug": "razor_x_src_matrix",
+      "status": "PASS",
+      "ok": true,
+      "exactAgreementRate": 1,
+      "convertedDeterminism": 1,
+      "cudaRuntimeClean": true,
+      "timingAvgRatio": 1,
+      "reportJson": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/razor_x_src_matrix.conversion_gate.json",
+      "reportMd": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/razor_x_src_matrix.conversion_gate.md",
+      "failures": [],
+      "warnings": []
+    },
+    {
+      "name": "Queensguard",
+      "input": "variants/queensguard.src.js",
+      "slug": "queensguard_src_matrix",
+      "status": "PASS",
+      "ok": true,
+      "exactAgreementRate": 1,
+      "convertedDeterminism": 1,
+      "cudaRuntimeClean": true,
+      "timingAvgRatio": 1,
+      "reportJson": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/queensguard_src_matrix.conversion_gate.json",
+      "reportMd": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/queensguard_src_matrix.conversion_gate.md",
+      "failures": [],
+      "warnings": []
+    },
+    {
+      "name": "Firebird",
+      "input": "variants/firebird.src.js",
+      "slug": "firebird_src_matrix",
+      "status": "PASS",
+      "ok": true,
+      "exactAgreementRate": 1,
+      "convertedDeterminism": 1,
+      "cudaRuntimeClean": true,
+      "timingAvgRatio": 1,
+      "reportJson": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/firebird_src_matrix.conversion_gate.json",
+      "reportMd": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/firebird_src_matrix.conversion_gate.md",
+      "failures": [],
+      "warnings": []
+    },
+    {
+      "name": "Fortress",
+      "input": "variants/fortress.src.js",
+      "slug": "fortress_src_matrix",
+      "status": "PASS",
+      "ok": true,
+      "exactAgreementRate": 1,
+      "convertedDeterminism": 1,
+      "cudaRuntimeClean": true,
+      "timingAvgRatio": 1,
+      "reportJson": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/fortress_src_matrix.conversion_gate.json",
+      "reportMd": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/fortress_src_matrix.conversion_gate.md",
+      "failures": [],
+      "warnings": []
+    },
+    {
+      "name": "RazorBlade II",
+      "input": "variants/razorblade_ii.js",
+      "slug": "razorblade_ii_matrix",
+      "status": "PASS",
+      "ok": true,
+      "exactAgreementRate": 1,
+      "convertedDeterminism": 1,
+      "cudaRuntimeClean": true,
+      "timingAvgRatio": 1,
+      "reportJson": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/razorblade_ii_matrix.conversion_gate.json",
+      "reportMd": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/razorblade_ii_matrix.conversion_gate.md",
+      "failures": [],
+      "warnings": []
+    }
+  ]
+}

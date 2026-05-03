@@ -1,0 +1,103 @@
+{
+  "ok": false,
+  "generatedAt": "2026-04-15T03:11:36.480Z",
+  "options": {
+    "samples": 24,
+    "configs": 16,
+    "sims": 8,
+    "minAccuracy": 0.55,
+    "minCoverage": 0.75
+  },
+  "total": 5,
+  "passCount": 0,
+  "failed": [
+    "Razor X",
+    "Queensguard",
+    "Firebird",
+    "Fortress",
+    "RazorBlade II"
+  ],
+  "results": [
+    {
+      "name": "Razor X",
+      "fighter": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/variants/razor_x.js",
+      "ok": false,
+      "fighterBlob": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/variants/razor_x.cuda_fighter_blob.json",
+      "comparablePositions": 19,
+      "agreementRate": 0.05263157894736842,
+      "coverage": 1,
+      "failures": [
+        "agreement_below_0.55"
+      ],
+      "warnings": [],
+      "jsonPath": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/razor_x_accuracy.cpu_gpu_accuracy.json",
+      "mdPath": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/razor_x_accuracy.cpu_gpu_accuracy.md"
+    },
+    {
+      "name": "Queensguard",
+      "fighter": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/variants/queensguard.js",
+      "ok": false,
+      "fighterBlob": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/variants/queensguard.cuda_fighter_blob.json",
+      "comparablePositions": 18,
+      "agreementRate": 0.05555555555555555,
+      "coverage": 0.9473684210526315,
+      "failures": [
+        "agreement_below_0.55"
+      ],
+      "warnings": [
+        "gpu_missing_engine_move_for_some_positions"
+      ],
+      "jsonPath": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/queensguard_accuracy.cpu_gpu_accuracy.json",
+      "mdPath": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/queensguard_accuracy.cpu_gpu_accuracy.md"
+    },
+    {
+      "name": "Firebird",
+      "fighter": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/variants/firebird.js",
+      "ok": false,
+      "fighterBlob": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/variants/firebird_src_dojo_runtime1.cuda_fighter_blob.json",
+      "comparablePositions": 18,
+      "agreementRate": 0.1111111111111111,
+      "coverage": 0.9473684210526315,
+      "failures": [
+        "agreement_below_0.55"
+      ],
+      "warnings": [
+        "gpu_missing_engine_move_for_some_positions"
+      ],
+      "jsonPath": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/firebird_accuracy.cpu_gpu_accuracy.json",
+      "mdPath": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/firebird_accuracy.cpu_gpu_accuracy.md"
+    },
+    {
+      "name": "Fortress",
+      "fighter": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/variants/fortress.js",
+      "ok": false,
+      "fighterBlob": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/variants/fortress_src_dojo_runtime1.cuda_fighter_blob.json",
+      "comparablePositions": 18,
+      "agreementRate": 0.05555555555555555,
+      "coverage": 0.9473684210526315,
+      "failures": [
+        "agreement_below_0.55"
+      ],
+      "warnings": [
+        "gpu_missing_engine_move_for_some_positions"
+      ],
+      "jsonPath": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/fortress_accuracy.cpu_gpu_accuracy.json",
+      "mdPath": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/fortress_accuracy.cpu_gpu_accuracy.md"
+    },
+    {
+      "name": "RazorBlade II",
+      "fighter": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/variants/razorblade_ii.js",
+      "ok": false,
+      "fighterBlob": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/variants/razorblade_ii_dojo.cuda_fighter_blob.json",
+      "comparablePositions": 19,
+      "agreementRate": 0.3684210526315789,
+      "coverage": 1,
+      "failures": [
+        "agreement_below_0.55"
+      ],
+      "warnings": [],
+      "jsonPath": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/razorblade_ii_accuracy.cpu_gpu_accuracy.json",
+      "mdPath": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/runtime/reports/razorblade_ii_accuracy.cpu_gpu_accuracy.md"
+    }
+  ]
+}
