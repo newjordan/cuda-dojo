@@ -362,6 +362,34 @@ static void orderRootMovesHost(const Board* board, Move* moves, int count) {
   }
 }
 
+static void printRootCandidatesJson(Move* moves, float* scores, int count, int engIdx, int bestIdx, int topN) {
+  bool used[MAX_MOVES] = {false};
+  printf("[");
+  int emitted = 0;
+  for (int rank = 0; rank < topN && rank < count; rank++) {
+    int idx = -1;
+    float best = -1.0e30f;
+    for (int i = 0; i < count; i++) {
+      if (!used[i] && scores[i] > best) {
+        best = scores[i];
+        idx = i;
+      }
+    }
+    if (idx < 0) break;
+    used[idx] = true;
+    char mv[8];
+    moveToUci(&moves[idx], mv, sizeof(mv));
+    if (emitted) printf(",");
+    printf("{\"move\":\"%s\",\"score\":%.3f,\"order\":%d,\"rank\":%d,"
+           "\"is_engine\":%s,\"is_best\":%s}",
+      mv, scores[idx] / 100.0f, idx, emitted + 1,
+      idx == engIdx ? "true" : "false",
+      idx == bestIdx ? "true" : "false");
+    emitted++;
+  }
+  printf("]");
+}
+
 // ============================================================================
 // HOST: Runtime fighter blob loader
 // ============================================================================
@@ -1817,10 +1845,13 @@ int main(int argc, char** argv) {
     first = 0;
     printf("{\"fen\":\"%s\",\"engine\":\"%s\",\"mcts\":\"%s\",\"mcts_wr\":%.3f,"
            "\"engine_score\":%.3f,\"gpu_score\":%.3f,\"score_delta\":%.3f,"
-           "\"engine_rank\":%d,\"legal_count\":%d,\"fixable\":%d,\"rate\":%.3f}",
+           "\"engine_rank\":%d,\"legal_count\":%d,\"fixable\":%d,\"rate\":%.3f,"
+           "\"gpu_root\":",
       fen, engineMove, searchMove, bestScore / 100.0f,
       engineScore / 100.0f, bestScore / 100.0f, (bestScore - engineScore) / 100.0f,
       engineRank, numMoves, fixable, (float)fixable/numConfigs);
+    printRootCandidatesJson(h_moves, h_searchScores, numMoves, engIdx, bestIdx, 8);
+    printf("}");
 
     cudaFree(d_bA); cudaFree(d_bB);
   }
