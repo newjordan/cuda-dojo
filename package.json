@@ -10,7 +10,8 @@
     "accuracy:gpu-fighter-external-baseline": "node fighter_accuracy/scripts/run_external_accuracy_gate.mjs --expect-fail",
     "accuracy:gpu-fighter-external-snapshot": "node fighter_accuracy/scripts/run_external_accuracy_gate.mjs --skip-run --expect-fail",
     "accuracy:gpu-fighter-baseline": "node scripts/run_cpu_gpu_accuracy_matrix.mjs --timeout-ms 300000",
-    "accuracy:gpu-fighter-gate": "node scripts/run_cpu_gpu_accuracy_matrix.mjs --timeout-ms 300000"
+    "accuracy:gpu-fighter-gate": "node scripts/run_cpu_gpu_accuracy_matrix.mjs --timeout-ms 300000",
+    "accuracy:trace-first": "node scripts/trace_first_disagreement.mjs"
   },
   "repository": {
     "type": "git",

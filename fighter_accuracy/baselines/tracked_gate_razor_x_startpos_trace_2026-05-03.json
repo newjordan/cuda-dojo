@@ -1,0 +1,489 @@
+{
+  "generatedAt": "2026-05-03T19:05:06.975Z",
+  "fighter": "/home/frosty40/VC_V1/cuda-dojo-public/variants/razor_x.js",
+  "fighterBlob": "/home/frosty40/VC_V1/cuda-dojo-public/variants/razor_x.cuda_fighter_blob.json",
+  "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "options": {
+    "configs": 4,
+    "sims": 4,
+    "timeoutMs": 30000
+  },
+  "cpu": {
+    "move": "a2a3",
+    "legalMoves": [
+      "a2a3",
+      "a2a4",
+      "b2b3",
+      "b2b4",
+      "c2c3",
+      "c2c4",
+      "d2d3",
+      "d2d4",
+      "e2e3",
+      "e2e4",
+      "f2f3",
+      "f2f4",
+      "g2g3",
+      "g2g4",
+      "h2h3",
+      "h2h4",
+      "b1a3",
+      "b1c3",
+      "g1f3",
+      "g1h3"
+    ],
+    "legal": true,
+    "metrics": {
+      "traincarMs": 25,
+      "searchMs": 4500,
+      "nodes": 256000,
+      "depth": 8,
+      "totalMs": 4625
+    },
+    "trace": {
+      "fighter": "Razor X",
+      "fullmove": {
+        "board": [
+          {
+            "color": 1,
+            "type": 4
+          },
+          {
+            "color": 1,
+            "type": 2
+          },
+          {
+            "color": 1,
+            "type": 3
+          },
+          {
+            "color": 1,
+            "type": 5
+          },
+          {
+            "color": 1,
+            "type": 6
+          },
+          {
+            "color": 1,
+            "type": 3
+          },
+          {
+            "color": 1,
+            "type": 2
+          },
+          {
+            "color": 1,
+            "type": 4
+          },
+          {
+            "color": 1,
+            "type": 1
+          },
+          {
+            "color": 1,
+            "type": 1
+          },
+          {
+            "color": 1,
+            "type": 1
+          },
+          {
+            "color": 1,
+            "type": 1
+          },
+          {
+            "color": 1,
+            "type": 1
+          },
+          {
+            "color": 1,
+            "type": 1
+          },
+          {
+            "color": 1,
+            "type": 1
+          },
+          {
+            "color": 1,
+            "type": 1
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          {
+            "color": 0,
+            "type": 1
+          },
+          {
+            "color": 0,
+            "type": 1
+          },
+          {
+            "color": 0,
+            "type": 1
+          },
+          {
+            "color": 0,
+            "type": 1
+          },
+          {
+            "color": 0,
+            "type": 1
+          },
+          {
+            "color": 0,
+            "type": 1
+          },
+          {
+            "color": 0,
+            "type": 1
+          },
+          {
+            "color": 0,
+            "type": 1
+          },
+          {
+            "color": 0,
+            "type": 4
+          },
+          {
+            "color": 0,
+            "type": 2
+          },
+          {
+            "color": 0,
+            "type": 3
+          },
+          {
+            "color": 0,
+            "type": 5
+          },
+          {
+            "color": 0,
+            "type": 6
+          },
+          {
+            "color": 0,
+            "type": 3
+          },
+          {
+            "color": 0,
+            "type": 2
+          },
+          {
+            "color": 0,
+            "type": 4
+          }
+        ],
+        "side": 0,
+        "castleRights": 15,
+        "epSq": -1,
+        "halfmove": 0,
+        "fullmove": 1,
+        "hash": 1026012385,
+        "mgScore": 0,
+        "egScore": 0,
+        "phase": 24
+      },
+      "layerTemps": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "maxDepth": 7,
+      "selectedScore": 53,
+      "selectedSource": "search",
+      "selectedLayer": {
+        "index": 3,
+        "depth": 7,
+        "temp": 27
+      },
+      "layers": [
+        {
+          "index": 0,
+          "minDepth": 1,
+          "maxDepth": 1,
+          "tuning": {
+            "temp": 13,
+            "aspiration": 164,
+            "razor": 280,
+            "futility": 224,
+            "lmp": 2,
+            "lmr": 2
+          },
+          "source": "root"
+        },
+        {
+          "index": 1,
+          "minDepth": 2,
+          "maxDepth": 3,
+          "tuning": {
+            "temp": 16,
+            "aspiration": 176,
+            "razor": 248,
+            "futility": 198,
+            "lmp": 2,
+            "lmr": 2
+          },
+          "source": "root"
+        },
+        {
+          "index": 2,
+          "minDepth": 4,
+          "maxDepth": 5,
+          "tuning": {
+            "temp": 21,
+            "aspiration": 196,
+            "razor": 216,
+            "futility": 173,
+            "lmp": 2,
+            "lmr": 1
+          },
+          "source": "root"
+        },
+        {
+          "index": 3,
+          "minDepth": 6,
+          "maxDepth": 8,
+          "tuning": {
+            "temp": 27,
+            "aspiration": 220,
+            "razor": 168,
+            "futility": 134,
+            "lmp": 1,
+            "lmr": 1
+          },
+          "source": "root"
+        }
+      ],
+      "iterations": [
+        {
+          "depth": 1,
+          "score": {
+            "temp": 13,
+            "aspiration": 164,
+            "razor": 280,
+            "futility": 224,
+            "lmp": 2,
+            "lmr": 2
+          },
+          "timeMs": 145,
+          "rootCandidates": []
+        },
+        {
+          "depth": 2,
+          "score": {
+            "temp": 16,
+            "aspiration": 176,
+            "razor": 248,
+            "futility": 198,
+            "lmp": 2,
+            "lmr": 2
+          },
+          "timeMs": 134,
+          "rootCandidates": []
+        },
+        {
+          "depth": 3,
+          "score": {
+            "temp": 16,
+            "aspiration": 176,
+            "razor": 248,
+            "futility": 198,
+            "lmp": 2,
+            "lmr": 2
+          },
+          "timeMs": 143,
+          "rootCandidates": []
+        },
+        {
+          "depth": 4,
+          "score": {
+            "temp": 21,
+            "aspiration": 196,
+            "razor": 216,
+            "futility": 173,
+            "lmp": 2,
+            "lmr": 1
+          },
+          "timeMs": 150,
+          "rootCandidates": []
+        },
+        {
+          "depth": 5,
+          "score": {
+            "temp": 21,
+            "aspiration": 196,
+            "razor": 216,
+            "futility": 173,
+            "lmp": 2,
+            "lmr": 1
+          },
+          "timeMs": 59,
+          "rootCandidates": []
+        },
+        {
+          "depth": 6,
+          "score": {
+            "temp": 27,
+            "aspiration": 220,
+            "razor": 168,
+            "futility": 134,
+            "lmp": 1,
+            "lmr": 1
+          },
+          "timeMs": 47,
+          "rootCandidates": []
+        },
+        {
+          "depth": 7,
+          "score": {
+            "temp": 27,
+            "aspiration": 220,
+            "razor": 168,
+            "futility": 134,
+            "lmp": 1,
+            "lmr": 1
+          },
+          "timeMs": 53,
+          "rootCandidates": []
+        }
+      ]
+    }
+  },
+  "gpu": {
+    "command": [
+      "timeout",
+      "--kill-after=10s",
+      "30s",
+      "/home/frosty40/VC_V1/cuda-dojo-public/cuda/gpu_forge",
+      "4",
+      "4",
+      "--fighter-blob",
+      "/home/frosty40/VC_V1/cuda-dojo-public/variants/razor_x.cuda_fighter_blob.json"
+    ],
+    "status": 0,
+    "signal": null,
+    "stderr": "[dojo] loaded fighter blob /home/frosty40/VC_V1/cuda-dojo-public/variants/razor_x.cuda_fighter_blob.json\n[dojo] search depth: 5\n",
+    "parseError": "",
+    "summary": {
+      "inputLines": 1,
+      "parsedLines": 1,
+      "comparablePositions": 1,
+      "agreements": 0,
+      "disagreements": 1,
+      "agreementRate": 0,
+      "disagreementRate": 1,
+      "coverage": 1,
+      "skippedShort": 0,
+      "skippedNoTab": 0,
+      "skippedNoMoves": 0,
+      "skippedEngineMoveMissing": 0,
+      "positions": 1,
+      "fixable": 1,
+      "unfixable": 0,
+      "fixRate": 1,
+      "elapsed": 1.29,
+      "posPerSec": 0.8,
+      "searchDepth": 5,
+      "verdict": "ARCHITECTURE_FINE",
+      "bestKnobs": {
+        "layer0_pawn": 7,
+        "layer0_king": 7.1,
+        "layer0_queen": 12.6,
+        "layer0_rook": 10.8,
+        "layer0_minor": 9.8,
+        "layer0_tempo": 14.3,
+        "layer1_pawn": 11.1,
+        "layer1_king": 11.2,
+        "layer1_queen": 8.9,
+        "layer1_rook": 11.3,
+        "layer1_minor": 9,
+        "layer1_tempo": 10.8,
+        "layer2_pawn": 13.8,
+        "layer2_king": 15,
+        "layer2_queen": 10.1,
+        "layer2_rook": 9,
+        "layer2_minor": 9.7,
+        "layer2_tempo": 8.9,
+        "layer3_pawn": 15.7,
+        "layer3_king": 6.8,
+        "layer3_queen": 5.7,
+        "layer3_rook": 14.6,
+        "layer3_minor": 10.1,
+        "layer3_tempo": 13.1,
+        "aggression0": 0.9,
+        "aggression1": 1.1,
+        "aggression2": 1.5,
+        "aggression3": 2,
+        "layerBleed": 3.9,
+        "doubledPawnMG": 13.2,
+        "doubledPawnEG": 23.2,
+        "isolatedPawnMG": 18.3,
+        "isolatedPawnEG": 22.6,
+        "connectedPawnMG": 9,
+        "connectedPawnEG": 14.3,
+        "shieldBonus": 17.4,
+        "shieldHole": 12.8,
+        "rookOpenFile": 30.6,
+        "rookSemiOpen": 17,
+        "rook7th": 30,
+        "bishopPair": 47.8,
+        "queenExposed": 35.4,
+        "queenTrapped": 24.9,
+        "tempo": 19.7
+      }
+    },
+    "positions": [
+      {
+        "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "engine": "a2a3",
+        "mcts": "d2d4",
+        "mcts_wr": 0.33,
+        "fixable": 4,
+        "rate": 1
+      }
+    ]
+  },
+  "firstDisagreement": {
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "engine": "a2a3",
+    "mcts": "d2d4",
+    "mcts_wr": 0.33,
+    "fixable": 4,
+    "rate": 1
+  },
+  "nextDebugTarget": "CPU chose a2a3; GPU chose d2d4. Add score tracing for both moves."
+}

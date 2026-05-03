@@ -46,3 +46,11 @@ Smoke condition:
 - Result: 0/5 pass.
 - Receipt copy: `fighter_accuracy/baselines/tracked_gate_smoke_cpu_gpu_accuracy_matrix_2026-05-03.md`
 - Notes: Firebird and Fortress hit the 30 second `gpu_forge` timeout at this smoke setting. That is recorded as a failure, not a pass.
+
+First mismatch trace:
+
+- Command: `node scripts/trace_first_disagreement.mjs --fighter variants/razor_x.js --configs 4 --sims 4 --timeout-ms 30000 --out fighter_accuracy/baselines/tracked_gate_razor_x_startpos_trace_2026-05-03.json`
+- FEN: start position.
+- CPU move: `a2a3`.
+- GPU move: `d2d4`.
+- Next debug target: add score tracing for both root moves.

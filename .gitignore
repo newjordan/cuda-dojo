@@ -45,3 +45,5 @@ runtime/
 archive/
 fighter_accuracy/receipts/*
 !fighter_accuracy/receipts/.gitkeep
+fighter_accuracy/traces/*
+!fighter_accuracy/traces/.gitkeep

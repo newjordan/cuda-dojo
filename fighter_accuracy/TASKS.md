@@ -8,6 +8,6 @@
       this repo.
 - [x] Reproduce a tracked 0/5 smoke matrix with explicit timeout conditions.
 - [ ] Reproduce the full strict 24-sample 0/5 baseline from the tracked gate.
-- [ ] Add first mismatch trace for one fighter/FEN pair.
+- [x] Add first mismatch trace for Razor X start position.
 - [ ] Improve GPU fighter move parity against the CPU fighter.
 - [ ] Add throughput/concurrency curves only after the accuracy gate is honest.
