@@ -53,4 +53,6 @@ First mismatch trace:
 - FEN: start position.
 - CPU move: `a2a3`.
 - GPU move: `d2d4`.
-- Next debug target: add score tracing for both root moves.
+- GPU score view: CPU move score `0.09`, GPU move score `0.33`, CPU move
+  rank `10/20`.
+- Next debug target: compare CPU trace against GPU root score/rank for those moves.

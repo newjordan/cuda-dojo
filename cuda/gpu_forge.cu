@@ -1353,6 +1353,11 @@ int main(int argc, char** argv) {
     if (strcmp(searchMove, engineMove) == 0) { agreements++; continue; }
 
     totalPos++;
+    float engineScore = h_searchScores[engIdx];
+    int engineRank = 1;
+    for (int i = 0; i < numMoves; i++) {
+      if (h_searchScores[i] > engineScore) engineRank++;
+    }
 
     // ================================================================
     // STEP 2: Knob tuner — which configs prefer the search move?
@@ -1394,8 +1399,12 @@ int main(int argc, char** argv) {
 
     if (!first) printf(",\n");
     first = 0;
-    printf("{\"fen\":\"%s\",\"engine\":\"%s\",\"mcts\":\"%s\",\"mcts_wr\":%.3f,\"fixable\":%d,\"rate\":%.3f}",
-      fen, engineMove, searchMove, bestScore / 100.0f, fixable, (float)fixable/numConfigs);
+    printf("{\"fen\":\"%s\",\"engine\":\"%s\",\"mcts\":\"%s\",\"mcts_wr\":%.3f,"
+           "\"engine_score\":%.3f,\"gpu_score\":%.3f,\"score_delta\":%.3f,"
+           "\"engine_rank\":%d,\"legal_count\":%d,\"fixable\":%d,\"rate\":%.3f}",
+      fen, engineMove, searchMove, bestScore / 100.0f,
+      engineScore / 100.0f, bestScore / 100.0f, (bestScore - engineScore) / 100.0f,
+      engineRank, numMoves, fixable, (float)fixable/numConfigs);
 
     cudaFree(d_bA); cudaFree(d_bB);
   }

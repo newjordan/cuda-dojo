@@ -25,7 +25,7 @@ The preserved baseline from the strict lab is:
 - [CPU-GPU accuracy matrix](baselines/external_dojo_conversion_lab_cpu_gpu_accuracy_matrix_2026-04-16.md): 0/5 pass
 - [Conversion matrix](baselines/external_dojo_conversion_lab_conversion_matrix_2026-04-16.md): 5/5 pass
 - [Tracked gate smoke matrix](baselines/tracked_gate_smoke_cpu_gpu_accuracy_matrix_2026-05-03.md): 0/5 pass
-- [Razor X startpos trace](baselines/tracked_gate_razor_x_startpos_trace_2026-05-03.json): CPU `a2a3`, GPU `d2d4`
+- [Razor X startpos trace](baselines/tracked_gate_razor_x_startpos_trace_2026-05-03.json): CPU `a2a3`, GPU `d2d4`, CPU move ranked `10/20` by GPU
 
 Interpretation:
 

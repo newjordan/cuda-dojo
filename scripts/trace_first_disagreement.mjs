@@ -156,7 +156,7 @@ function main() {
     },
     firstDisagreement,
     nextDebugTarget: firstDisagreement
-      ? `CPU chose ${firstDisagreement.engine}; GPU chose ${firstDisagreement.mcts}. Add score tracing for both moves.`
+      ? `CPU chose ${firstDisagreement.engine}; GPU chose ${firstDisagreement.mcts}. Compare CPU trace against GPU root score/rank for those moves.`
       : 'No disagreement emitted for this FEN; inspect summary skips/agreements.',
   };
 
@@ -178,4 +178,3 @@ function main() {
 }
 
 main();
-
