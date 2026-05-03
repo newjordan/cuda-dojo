@@ -22,6 +22,8 @@ function parseArgs(argv) {
     minCoverage: 0.8,
     timeoutMs: 300000,
     slug: '',
+    gpuFullQeval: false,
+    gpuFilterLegal: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -35,6 +37,8 @@ function parseArgs(argv) {
     else if (arg === '--timeout-ms') options.timeoutMs = Math.max(0, Number(argv[++i] || options.timeoutMs));
     else if (arg === '--no-timeout') options.timeoutMs = 0;
     else if (arg === '--slug') options.slug = argv[++i] || '';
+    else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
+    else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
   }
 
   if (!options.fighter) {
@@ -175,10 +179,12 @@ function buildCpuInputLines(fighterPath, fens) {
   return { usable, skipped, input };
 }
 
-function runGpuForge(configs, sims, blobPath, input, timeoutMs) {
+function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuFullQeval, gpuFilterLegal) {
   if (!existsSync(GPU_FORGE_BIN)) throw new Error(`Missing gpu_forge binary: ${GPU_FORGE_BIN}`);
   if (!existsSync(blobPath)) throw new Error(`Missing fighter blob: ${blobPath}`);
   const forgeArgs = [String(configs), String(sims), '--fighter-blob', blobPath];
+  if (gpuFullQeval) forgeArgs.push('--full-qeval');
+  if (gpuFilterLegal) forgeArgs.push('--filter-legal');
   const command = timeoutMs > 0
     ? ['timeout', '--kill-after=10s', `${Math.ceil(timeoutMs / 1000)}s`, GPU_FORGE_BIN, ...forgeArgs]
     : [GPU_FORGE_BIN, ...forgeArgs];
@@ -218,7 +224,7 @@ function main() {
 
   const corpus = buildCorpus(options.samples);
   const { usable, skipped, input } = buildCpuInputLines(fighterPath, corpus);
-  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs);
+  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuFullQeval, options.gpuFilterLegal);
   const summary = gpu.summary || {};
 
   const comparable = Number(summary.comparablePositions || 0);
@@ -248,6 +254,8 @@ function main() {
       minAccuracy: options.minAccuracy,
       minCoverage: options.minCoverage,
       timeoutMs: options.timeoutMs,
+      gpuFullQeval: options.gpuFullQeval,
+      gpuFilterLegal: options.gpuFilterLegal,
     },
     corpus: {
       size: corpus.length,

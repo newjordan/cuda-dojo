@@ -197,6 +197,8 @@ __constant__ int C_MVV_VAL[7] = {0, 100, 320, 330, 500, 900, 20000};
 
 // Fighter personality knobs — loaded at runtime from blob
 __constant__ float C_FIGHTER_KNOBS[KNOB_COUNT];
+__constant__ int C_FULL_QEVAL;
+__constant__ int C_FILTER_LEGAL;
 
 // ============================================================================
 // DATA STRUCTURES
@@ -256,6 +258,15 @@ static bool parseUciMoveToken(const char* token, Move* out) {
   out->from = from;
   out->to = to;
   out->promo = 0;
+  if (token[4]) {
+    switch ((char)tolower((unsigned char)token[4])) {
+      case 'q': out->promo = QUEEN; break;
+      case 'r': out->promo = ROOK; break;
+      case 'b': out->promo = BISHOP; break;
+      case 'n': out->promo = KNIGHT; break;
+      default: out->promo = 0; break;
+    }
+  }
   return true;
 }
 
@@ -275,6 +286,31 @@ static int parseLegalMoveList(char* movesText, Move* outMoves, int maxMoves) {
     if (parseUciMoveToken(token, &mv)) outMoves[count++] = mv;
   }
   return count;
+}
+
+static char promoPieceToChar(int promo) {
+  switch (promo) {
+    case QUEEN: return 'q';
+    case ROOK: return 'r';
+    case BISHOP: return 'b';
+    case KNIGHT: return 'n';
+    default: return 0;
+  }
+}
+
+static void moveToUci(const Move* move, char* out, size_t outSize) {
+  if (!move || !out || outSize < 6) return;
+  char promo = promoPieceToChar(move->promo);
+  out[0] = (char)('a' + (move->from % 8));
+  out[1] = (char)('0' + (8 - (move->from / 8)));
+  out[2] = (char)('a' + (move->to % 8));
+  out[3] = (char)('0' + (8 - (move->to / 8)));
+  if (promo) {
+    out[4] = promo;
+    out[5] = 0;
+  } else {
+    out[4] = 0;
+  }
 }
 
 // ============================================================================
@@ -420,7 +456,30 @@ void parseFen(const char* fen, Board* b) {
     }
     sq++; p++;
   }
-  if (*p == ' ') { p++; b->side = (*p == 'b') ? 1 : 0; }
+  if (*p == ' ') {
+    p++;
+    b->side = (*p == 'b') ? 1 : 0;
+    while (*p && *p != ' ') p++;
+  }
+  if (*p == ' ') {
+    p++;
+    b->castling = 0;
+    if (*p == '-') {
+      p++;
+    } else {
+      while (*p && *p != ' ') {
+        if (*p == 'K') b->castling |= 1;
+        else if (*p == 'Q') b->castling |= 2;
+        else if (*p == 'k') b->castling |= 4;
+        else if (*p == 'q') b->castling |= 8;
+        p++;
+      }
+    }
+  }
+  if (*p == ' ') {
+    p++;
+    b->epSq = (*p == '-') ? -1 : parseUciSquare(p);
+  }
   if (b->phase > 24) b->phase = 24;
 }
 
@@ -429,6 +488,102 @@ void parseFen(const char* fen, Board* b) {
 // ============================================================================
 
 __device__ int inBounds(int r, int c) { return r >= 0 && r < 8 && c >= 0 && c < 8; }
+
+__device__ int findKingSq(Board* b, int side) {
+  int flag = side ? BLACK_FLAG : WHITE_FLAG;
+  for (int sq = 0; sq < 64; sq++) {
+    int pc = b->pieces[sq];
+    if (pc && (pc & 7) == KING && (pc & 8) == flag) return sq;
+  }
+  return -1;
+}
+
+__device__ int isSquareAttacked(Board* b, int sq, int bySide) {
+  int byFlag = bySide ? BLACK_FLAG : WHITE_FLAG;
+  int tr = sq / 8;
+  int tc = sq % 8;
+
+  int pawnRow = bySide == 0 ? tr + 1 : tr - 1;
+  for (int dc = -1; dc <= 1; dc += 2) {
+    int nc = tc + dc;
+    if (inBounds(pawnRow, nc)) {
+      int pc = b->pieces[pawnRow * 8 + nc];
+      if (pc && (pc & 8) == byFlag && (pc & 7) == PAWN) return 1;
+    }
+  }
+
+  int kd[8][2] = {{-2,-1},{-2,1},{-1,-2},{-1,2},{1,-2},{1,2},{2,-1},{2,1}};
+  for (int d = 0; d < 8; d++) {
+    int nr = tr + kd[d][0], nc = tc + kd[d][1];
+    if (inBounds(nr, nc)) {
+      int pc = b->pieces[nr * 8 + nc];
+      if (pc && (pc & 8) == byFlag && (pc & 7) == KNIGHT) return 1;
+    }
+  }
+
+  for (int dr = -1; dr <= 1; dr++) for (int dc = -1; dc <= 1; dc++) {
+    if (!dr && !dc) continue;
+    int nr = tr + dr, nc = tc + dc;
+    if (inBounds(nr, nc)) {
+      int pc = b->pieces[nr * 8 + nc];
+      if (pc && (pc & 8) == byFlag && (pc & 7) == KING) return 1;
+    }
+  }
+
+  int dirs[8][2] = {{-1,-1},{-1,0},{-1,1},{0,-1},{0,1},{1,-1},{1,0},{1,1}};
+  for (int d = 0; d < 8; d++) {
+    int nr = tr + dirs[d][0], nc = tc + dirs[d][1];
+    int isDiag = (dirs[d][0] != 0 && dirs[d][1] != 0);
+    while (inBounds(nr, nc)) {
+      int pc = b->pieces[nr * 8 + nc];
+      if (pc) {
+        if ((pc & 8) == byFlag) {
+          int type = pc & 7;
+          if ((isDiag && (type == BISHOP || type == QUEEN)) ||
+              (!isDiag && (type == ROOK || type == QUEEN))) return 1;
+        }
+        break;
+      }
+      nr += dirs[d][0];
+      nc += dirs[d][1];
+    }
+  }
+
+  return 0;
+}
+
+__device__ int isInCheck(Board* b, int side) {
+  int kingSq = findKingSq(b, side);
+  if (kingSq < 0) return 1;
+  return isSquareAttacked(b, kingSq, 1 - side);
+}
+
+__device__ int moveIsEpCapture(Board* b, Move* m) {
+  int moving = b->pieces[m->from];
+  return moving && (moving & 7) == PAWN && m->to == b->epSq && b->pieces[m->to] == EMPTY;
+}
+
+__device__ int moveCapturedPiece(Board* b, Move* m) {
+  int captured = b->pieces[m->to];
+  if (!captured && moveIsEpCapture(b, m)) {
+    int movingIsW = (b->pieces[m->from] & 8) == 0;
+    int capSq = movingIsW ? m->to + 8 : m->to - 8;
+    if (capSq >= 0 && capSq < 64) captured = b->pieces[capSq];
+  }
+  return captured;
+}
+
+__device__ void addPawnMove(Move* moves, int* count, int from, int to, int promote) {
+  if (*count >= MAX_MOVES) return;
+  if (promote) {
+    int promos[4] = {QUEEN, ROOK, BISHOP, KNIGHT};
+    for (int i = 0; i < 4 && *count < MAX_MOVES; i++) {
+      moves[(*count)++] = {from, to, promos[i]};
+    }
+  } else {
+    moves[(*count)++] = {from, to, 0};
+  }
+}
 
 __device__ int generateMoves(Board* b, Move* moves) {
   int count = 0;
@@ -446,8 +601,9 @@ __device__ int generateMoves(Board* b, Move* moves) {
       int dir = (friendly == WHITE_FLAG) ? -1 : 1;
       int startRank = (friendly == WHITE_FLAG) ? 6 : 1;
       int nr = r + dir;
+      int promoRank = (friendly == WHITE_FLAG) ? 0 : 7;
       if (inBounds(nr, c) && !b->pieces[nr*8+c]) {
-        moves[count++] = {sq, nr*8+c, 0};
+        addPawnMove(moves, &count, sq, nr*8+c, nr == promoRank);
         if (r == startRank) {
           int nr2 = r + dir*2;
           if (!b->pieces[nr2*8+c]) moves[count++] = {sq, nr2*8+c, 0};
@@ -457,7 +613,11 @@ __device__ int generateMoves(Board* b, Move* moves) {
         int nc = c + dc;
         if (inBounds(nr, nc)) {
           int target = b->pieces[nr*8+nc];
-          if (target && (target & 8) == (unsigned)enemy) moves[count++] = {sq, nr*8+nc, 0};
+          if (target && (target & 8) == (unsigned)enemy) {
+            addPawnMove(moves, &count, sq, nr*8+nc, nr == promoRank);
+          } else if (nr*8+nc == b->epSq) {
+            moves[count++] = {sq, nr*8+nc, 0};
+          }
         }
       }
     } else if (type == KNIGHT) {
@@ -476,6 +636,31 @@ __device__ int generateMoves(Board* b, Move* moves) {
         if (inBounds(nr,nc)) {
           int t = b->pieces[nr*8+nc];
           if (!t || (t&8)==(unsigned)enemy) moves[count++] = {sq, nr*8+nc, 0};
+        }
+      }
+      if (!isSquareAttacked(b, sq, 1 - side)) {
+        if (side == 0 && sq == 60) {
+          if ((b->castling & 1) && !b->pieces[61] && !b->pieces[62] &&
+              b->pieces[63] && (b->pieces[63] & 7) == ROOK && (b->pieces[63] & 8) == WHITE_FLAG &&
+              !isSquareAttacked(b, 61, 1) && !isSquareAttacked(b, 62, 1)) {
+            moves[count++] = {60, 62, 0};
+          }
+          if ((b->castling & 2) && !b->pieces[59] && !b->pieces[58] && !b->pieces[57] &&
+              b->pieces[56] && (b->pieces[56] & 7) == ROOK && (b->pieces[56] & 8) == WHITE_FLAG &&
+              !isSquareAttacked(b, 59, 1) && !isSquareAttacked(b, 58, 1)) {
+            moves[count++] = {60, 58, 0};
+          }
+        } else if (side == 1 && sq == 4) {
+          if ((b->castling & 4) && !b->pieces[5] && !b->pieces[6] &&
+              b->pieces[7] && (b->pieces[7] & 7) == ROOK && (b->pieces[7] & 8) == BLACK_FLAG &&
+              !isSquareAttacked(b, 5, 0) && !isSquareAttacked(b, 6, 0)) {
+            moves[count++] = {4, 6, 0};
+          }
+          if ((b->castling & 8) && !b->pieces[3] && !b->pieces[2] && !b->pieces[1] &&
+              b->pieces[0] && (b->pieces[0] & 7) == ROOK && (b->pieces[0] & 8) == BLACK_FLAG &&
+              !isSquareAttacked(b, 3, 0) && !isSquareAttacked(b, 2, 0)) {
+            moves[count++] = {4, 2, 0};
+          }
         }
       }
     } else { // Bishop, Rook, Queen — sliding pieces
@@ -507,23 +692,30 @@ __device__ void makeMove(Board* b, Move* m) {
   int captured = b->pieces[m->to];
   int movingType = moving & 7;
   int movingIsW = (moving & 8) == 0;
+  int isEp = movingType == PAWN && m->to == b->epSq && captured == EMPTY;
+  int epCapSq = movingIsW ? m->to + 8 : m->to - 8;
+  if (isEp && epCapSq >= 0 && epCapSq < 64) captured = b->pieces[epCapSq];
 
   // Remove captured piece's PST contribution
   if (captured) {
     int capType = captured & 7;
     int capIsW = (captured & 8) == 0;
-    int pstIdx = capIsW ? m->to : C_MIRROR[m->to];
+    int capSq = isEp ? epCapSq : m->to;
+    int pstIdx = capIsW ? capSq : C_MIRROR[capSq];
     float cmg = (float)(C_MG_PIECE_VAL[capType] + C_MG_PST[capType][pstIdx]);
     float ceg = (float)(C_EG_PIECE_VAL[capType] + C_EG_PST[capType][pstIdx]);
     if (capIsW) { b->mgScore -= cmg; b->egScore -= ceg; }
     else        { b->mgScore += cmg; b->egScore += ceg; }
     b->phase -= C_PHASE_WEIGHTS[capType];
     if (b->phase < 0) b->phase = 0;
+    if (isEp && epCapSq >= 0 && epCapSq < 64) b->pieces[epCapSq] = EMPTY;
   }
 
   // Determine destination piece type (auto-queen on promotion)
   int destType = movingType;
-  if (movingType == PAWN) {
+  if (movingType == PAWN && m->promo >= KNIGHT && m->promo <= QUEEN) {
+    destType = m->promo;
+  } else if (movingType == PAWN) {
     int destRank = m->to / 8;
     if ((movingIsW && destRank == 0) || (!movingIsW && destRank == 7))
       destType = QUEEN;
@@ -548,6 +740,41 @@ __device__ void makeMove(Board* b, Move* m) {
     b->pieces[m->to] = moving;
   }
   b->pieces[m->from] = EMPTY;
+
+  if (movingType == KING && (m->to - m->from == 2 || m->from - m->to == 2)) {
+    int rookFrom = -1, rookTo = -1;
+    if (m->from == 60 && m->to == 62) { rookFrom = 63; rookTo = 61; }
+    else if (m->from == 60 && m->to == 58) { rookFrom = 56; rookTo = 59; }
+    else if (m->from == 4 && m->to == 6) { rookFrom = 7; rookTo = 5; }
+    else if (m->from == 4 && m->to == 2) { rookFrom = 0; rookTo = 3; }
+    if (rookFrom >= 0) {
+      int rook = b->pieces[rookFrom];
+      int rookIsW = (rook & 8) == 0;
+      int fromIdx = rookIsW ? rookFrom : C_MIRROR[rookFrom];
+      int toIdx = rookIsW ? rookTo : C_MIRROR[rookTo];
+      float fromMgR = (float)(C_MG_PIECE_VAL[ROOK] + C_MG_PST[ROOK][fromIdx]);
+      float fromEgR = (float)(C_EG_PIECE_VAL[ROOK] + C_EG_PST[ROOK][fromIdx]);
+      float toMgR = (float)(C_MG_PIECE_VAL[ROOK] + C_MG_PST[ROOK][toIdx]);
+      float toEgR = (float)(C_EG_PIECE_VAL[ROOK] + C_EG_PST[ROOK][toIdx]);
+      if (rookIsW) { b->mgScore += toMgR - fromMgR; b->egScore += toEgR - fromEgR; }
+      else         { b->mgScore -= toMgR - fromMgR; b->egScore -= toEgR - fromEgR; }
+      b->pieces[rookTo] = rook;
+      b->pieces[rookFrom] = EMPTY;
+    }
+  }
+
+  if (movingType == KING) {
+    if (movingIsW) b->castling &= ~3;
+    else b->castling &= ~12;
+  }
+  if (m->from == 63 || m->to == 63) b->castling &= ~1;
+  if (m->from == 56 || m->to == 56) b->castling &= ~2;
+  if (m->from == 7 || m->to == 7) b->castling &= ~4;
+  if (m->from == 0 || m->to == 0) b->castling &= ~8;
+  b->epSq = -1;
+  if (movingType == PAWN && (m->to - m->from == 16 || m->from - m->to == 16))
+    b->epSq = (m->from + m->to) / 2;
+
   b->side = 1 - b->side;
 }
 
@@ -802,8 +1029,8 @@ __device__ float evalPosition(Board* b) {
 }
 
 // ============================================================================
-// DEVICE: Fast PeSTO-only evaluation (for quiescence search inner nodes)
-// No brain scan — just tapered PeSTO from incremental scores.
+// DEVICE: Fast PeSTO-only evaluation (kept for future throughput modes).
+// Accuracy mode uses evalPosition in qsearch to match CPU fighter semantics.
 // ============================================================================
 
 __device__ float evalFast(Board* b) {
@@ -849,7 +1076,7 @@ __device__ void orderMoves(Board* b, Move* moves, int count) {
 // ============================================================================
 
 __device__ float quiesce(Board* b, float alpha, float beta, int depth) {
-  float standPat = evalFast(b); // Fast PeSTO-only for quiescence speed
+  float standPat = C_FULL_QEVAL ? evalPosition(b) : evalFast(b);
   if (depth <= 0) return standPat;
   if (standPat >= beta) return beta;
   if (standPat > alpha) alpha = standPat;
@@ -863,7 +1090,7 @@ __device__ float quiesce(Board* b, float alpha, float beta, int depth) {
   orderMoves(b, moves, nMoves);
 
   for (int i = 0; i < nMoves; i++) {
-    int captured = b->pieces[moves[i].to];
+    int captured = moveCapturedPiece(b, &moves[i]);
     if (!captured) continue; // only search captures
 
     // Delta pruning per move
@@ -872,6 +1099,7 @@ __device__ float quiesce(Board* b, float alpha, float beta, int depth) {
 
     Board child = *b;
     makeMove(&child, &moves[i]);
+    if (C_FILTER_LEGAL && isInCheck(&child, 1 - child.side)) continue;
     float score = -quiesce(&child, -beta, -alpha, depth - 1);
     if (score >= beta) return beta;
     if (score > alpha) alpha = score;
@@ -894,14 +1122,20 @@ __device__ float negamax(Board* b, int depth, float alpha, float beta) {
 
   orderMoves(b, moves, nMoves);
   float bestScore = -99999.0f;
+  int movesSearched = 0;
 
   for (int i = 0; i < nMoves; i++) {
     Board child = *b;
     makeMove(&child, &moves[i]);
+    if (C_FILTER_LEGAL && isInCheck(&child, 1 - child.side)) continue;
+    movesSearched++;
     float score = -negamax(&child, depth - 1, -beta, -alpha);
     if (score > bestScore) bestScore = score;
     if (score > alpha) alpha = score;
     if (alpha >= beta) break; // beta cutoff
+  }
+  if (movesSearched == 0) {
+    return isInCheck(b, b->side) ? -90000.0f + (float)(DEFAULT_SEARCH_DEPTH - depth) : 0.0f;
   }
   return bestScore;
 }
@@ -923,6 +1157,10 @@ __global__ void searchKernel(
 
   Board child = *d_board;
   makeMove(&child, &d_moves[tid]);
+  if (C_FILTER_LEGAL && isInCheck(&child, 1 - child.side)) {
+    d_scores[tid] = -99999.0f;
+    return;
+  }
   // Search from opponent's perspective, negate for our score
   d_scores[tid] = -negamax(&child, searchDepth - 1, -99999.0f, 99999.0f);
 }
@@ -1151,8 +1389,9 @@ __global__ void genConfigs(KnobConfig* d_configs, float* d_defaults, int n, unsi
 
 int main(int argc, char** argv) {
   int numConfigs = 4096;
-  int mctsSimsPerMove = 500;
   int searchDepth = DEFAULT_SEARCH_DEPTH;
+  int fullQeval = 0;
+  int filterLegal = 0;
   int positional = 0;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--fighter-blob") == 0) { i++; continue; }
@@ -1162,9 +1401,16 @@ int main(int argc, char** argv) {
       if (searchDepth > 12) searchDepth = 12;
       continue;
     }
+    if (strcmp(argv[i], "--full-qeval") == 0) {
+      fullQeval = 1;
+      continue;
+    }
+    if (strcmp(argv[i], "--filter-legal") == 0) {
+      filterLegal = 1;
+      continue;
+    }
     if (argv[i][0] == '-') continue;
     if (positional == 0) numConfigs = atoi(argv[i]);
-    else if (positional == 1) mctsSimsPerMove = atoi(argv[i]);
     positional++;
   }
 
@@ -1183,9 +1429,13 @@ int main(int argc, char** argv) {
     }
   }
   fprintf(stderr, "[dojo] search depth: %d\n", searchDepth);
+  if (fullQeval) fprintf(stderr, "[dojo] full qsearch eval: enabled\n");
+  if (filterLegal) fprintf(stderr, "[dojo] legal child filter: enabled\n");
 
   // Upload fighter knobs to constant memory for search evaluation
   cudaMemcpyToSymbol(C_FIGHTER_KNOBS, defaults, KNOB_COUNT * sizeof(float));
+  cudaMemcpyToSymbol(C_FULL_QEVAL, &fullQeval, sizeof(int));
+  cudaMemcpyToSymbol(C_FILTER_LEGAL, &filterLegal, sizeof(int));
 
   // Allocate GPU memory
   Board *d_board; cudaMalloc(&d_board, sizeof(Board));
@@ -1221,7 +1471,7 @@ int main(int argc, char** argv) {
   memcpy(bestKnobs, defaults, sizeof(defaults));
   int totalPos = 0, totalFixable = 0, totalUnfixable = 0;
   int inputLines = 0, parsedLines = 0, comparablePositions = 0, agreements = 0;
-  int skippedShort = 0, skippedNoTab = 0, skippedNoMoves = 0, skippedEngineMoveMissing = 0;
+  int skippedShort = 0, skippedNoTab = 0, skippedNoMoves = 0, skippedEngineMoveMissing = 0, skippedNoLegalRootScore = 0;
 
   char line[512];
   struct timespec start, now;
@@ -1268,7 +1518,6 @@ int main(int argc, char** argv) {
       // Generate pseudo-legal moves on host as fallback
       int side = board.side;
       int friendly = side ? BLACK_FLAG : WHITE_FLAG;
-      int enemy = side ? WHITE_FLAG : BLACK_FLAG;
       for (int sq = 0; sq < 64 && numMoves < MAX_MOVES-4; sq++) {
         int pc = board.pieces[sq];
         if (!pc || (pc & 8) != friendly) continue;
@@ -1315,7 +1564,7 @@ int main(int argc, char** argv) {
     int engIdx = -1;
     for (int i = 0; i < numMoves; i++) {
       char mv[8];
-      snprintf(mv, 8, "%c%d%c%d", 'a'+(h_moves[i].from%8), 8-(h_moves[i].from/8), 'a'+(h_moves[i].to%8), 8-(h_moves[i].to/8));
+      moveToUci(&h_moves[i], mv, sizeof(mv));
       if (strcmp(mv, engineMove) == 0) { engIdx = i; break; }
     }
     if (engIdx < 0) { skippedEngineMoveMissing++; continue; }
@@ -1333,19 +1582,18 @@ int main(int argc, char** argv) {
     cudaMemcpy(h_searchScores, d_searchScores, numMoves * sizeof(float), cudaMemcpyDeviceToHost);
 
     // Find best move by search score
-    int bestIdx = 0; float bestScore = -99999.0f;
+    int bestIdx = -1; float bestScore = -99999.0f;
     for (int i = 0; i < numMoves; i++) {
       if (h_searchScores[i] > bestScore) {
         bestScore = h_searchScores[i];
         bestIdx = i;
       }
     }
+    if (bestIdx < 0 || bestScore <= -99998.0f) { skippedNoLegalRootScore++; continue; }
 
     // Convert search best move to UCI
     char searchMove[8];
-    snprintf(searchMove, 8, "%c%d%c%d",
-      'a'+(h_moves[bestIdx].from%8), 8-(h_moves[bestIdx].from/8),
-      'a'+(h_moves[bestIdx].to%8), 8-(h_moves[bestIdx].to/8));
+    moveToUci(&h_moves[bestIdx], searchMove, sizeof(searchMove));
 
     comparablePositions++;
 
@@ -1420,8 +1668,8 @@ int main(int argc, char** argv) {
   printf("\"inputLines\":%d,\"parsedLines\":%d,", inputLines, parsedLines);
   printf("\"comparablePositions\":%d,\"agreements\":%d,\"disagreements\":%d,", comparablePositions, agreements, disagreements);
   printf("\"agreementRate\":%.3f,\"disagreementRate\":%.3f,\"coverage\":%.3f,", agreementRate, disagreementRate, coverage);
-  printf("\"skippedShort\":%d,\"skippedNoTab\":%d,\"skippedNoMoves\":%d,\"skippedEngineMoveMissing\":%d,",
-    skippedShort, skippedNoTab, skippedNoMoves, skippedEngineMoveMissing);
+  printf("\"skippedShort\":%d,\"skippedNoTab\":%d,\"skippedNoMoves\":%d,\"skippedEngineMoveMissing\":%d,\"skippedNoLegalRootScore\":%d,",
+    skippedShort, skippedNoTab, skippedNoMoves, skippedEngineMoveMissing, skippedNoLegalRootScore);
   printf("\"positions\":%d,\"fixable\":%d,\"unfixable\":%d,\"fixRate\":%.3f,",
     totalPos, totalFixable, totalUnfixable, totalPos>0?(float)totalFixable/totalPos:0);
   printf("\"elapsed\":%.2f,\"posPerSec\":%.1f,", elapsed, totalPos > 0 ? totalPos/elapsed : 0.0);

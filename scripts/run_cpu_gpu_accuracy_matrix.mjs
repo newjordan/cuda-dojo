@@ -25,6 +25,8 @@ function parseArgs(argv) {
     minAccuracy: 0.55,
     minCoverage: 0.75,
     timeoutMs: 300000,
+    gpuFullQeval: false,
+    gpuFilterLegal: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -35,6 +37,8 @@ function parseArgs(argv) {
     else if (arg === '--min-coverage') options.minCoverage = Number(argv[++i] || options.minCoverage);
     else if (arg === '--timeout-ms') options.timeoutMs = Math.max(0, Number(argv[++i] || options.timeoutMs));
     else if (arg === '--no-timeout') options.timeoutMs = 0;
+    else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
+    else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
   }
   return options;
 }
@@ -51,6 +55,8 @@ function runOne(entry, options) {
     '--timeout-ms', String(options.timeoutMs),
     '--slug', entry.slug,
   ];
+  if (options.gpuFullQeval) args.push('--gpu-full-qeval');
+  if (options.gpuFilterLegal) args.push('--gpu-filter-legal');
 
   try {
     const raw = execFileSync(process.execPath, args, {

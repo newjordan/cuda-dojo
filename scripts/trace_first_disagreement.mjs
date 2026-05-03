@@ -17,6 +17,8 @@ function parseArgs(argv) {
     sims: 4,
     timeoutMs: 30000,
     out: '',
+    gpuFullQeval: false,
+    gpuFilterLegal: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -29,6 +31,8 @@ function parseArgs(argv) {
     else if (arg === '--timeout-ms') options.timeoutMs = Math.max(0, Number(argv[++i] || options.timeoutMs));
     else if (arg === '--no-timeout') options.timeoutMs = 0;
     else if (arg === '--out') options.out = argv[++i] || '';
+    else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
+    else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
 
@@ -84,6 +88,8 @@ function buildCpuTrace(fighterPath, fen) {
 function runGpuTrace(options, fighterBlob, fen, cpuMove, legalMoves) {
   const input = `${fen}\t${cpuMove}\t${legalMoves.join(',')}\n`;
   const forgeArgs = [String(options.configs), String(options.sims), '--fighter-blob', fighterBlob];
+  if (options.gpuFullQeval) forgeArgs.push('--full-qeval');
+  if (options.gpuFilterLegal) forgeArgs.push('--filter-legal');
   const command = options.timeoutMs > 0
     ? ['timeout', '--kill-after=10s', `${Math.ceil(options.timeoutMs / 1000)}s`, GPU_FORGE_BIN, ...forgeArgs]
     : [GPU_FORGE_BIN, ...forgeArgs];
@@ -143,6 +149,8 @@ function main() {
       configs: options.configs,
       sims: options.sims,
       timeoutMs: options.timeoutMs,
+      gpuFullQeval: options.gpuFullQeval,
+      gpuFilterLegal: options.gpuFilterLegal,
     },
     cpu,
     gpu: {
