@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <math.h>
 #include <fstream>
 #include <string>
 #include <time.h>
@@ -1580,6 +1581,9 @@ int main(int argc, char** argv) {
     cudaDeviceSynchronize();
 
     cudaMemcpy(h_searchScores, d_searchScores, numMoves * sizeof(float), cudaMemcpyDeviceToHost);
+    for (int i = 0; i < numMoves; i++) {
+      if (!isfinite(h_searchScores[i]) || fabsf(h_searchScores[i]) > 99999.0f) h_searchScores[i] = -99999.0f;
+    }
 
     // Find best move by search score
     int bestIdx = -1; float bestScore = -99999.0f;
