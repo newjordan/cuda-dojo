@@ -27,6 +27,7 @@ function parseArgs(argv) {
     gpuFullQeval: false,
     gpuFilterLegal: false,
     gpuTraincarEval: false,
+    gpuTraincarBook: false,
     gpuSerialRoot: false,
     gpuRootOrder: false,
     gpuFamilyDispatch: false,
@@ -48,6 +49,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
     else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
+    else if (arg === '--gpu-traincar-book') options.gpuTraincarBook = true;
     else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
     else if (arg === '--gpu-root-order') options.gpuRootOrder = true;
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
@@ -192,7 +194,7 @@ function buildCpuInputLines(fighterPath, fens) {
   return { usable, skipped, input };
 }
 
-function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal, gpuTraincarEval, gpuSerialRoot, gpuRootOrder, gpuFamilyDispatch, gpuTimeoutRootProxy) {
+function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal, gpuTraincarEval, gpuTraincarBook, gpuSerialRoot, gpuRootOrder, gpuFamilyDispatch, gpuTimeoutRootProxy) {
   if (!existsSync(GPU_FORGE_BIN)) throw new Error(`Missing gpu_forge binary: ${GPU_FORGE_BIN}`);
   if (!existsSync(blobPath)) throw new Error(`Missing fighter blob: ${blobPath}`);
   const forgeArgs = [String(configs), String(sims), '--fighter-blob', blobPath];
@@ -200,6 +202,7 @@ function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFul
   if (gpuFullQeval) forgeArgs.push('--full-qeval');
   if (gpuFilterLegal) forgeArgs.push('--filter-legal');
   if (gpuTraincarEval) forgeArgs.push('--traincar-eval');
+  if (gpuTraincarBook) forgeArgs.push('--traincar-book');
   if (gpuSerialRoot) forgeArgs.push('--serial-root');
   if (gpuRootOrder) forgeArgs.push('--root-order');
   if (gpuFamilyDispatch) forgeArgs.push('--family-dispatch');
@@ -244,9 +247,9 @@ function main() {
 
   const corpus = buildCorpus(options.samples);
   const { usable, skipped, input } = buildCpuInputLines(fighterPath, corpus);
-  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuSerialRoot, options.gpuRootOrder, options.gpuFamilyDispatch, options.gpuTimeoutRootProxy);
+  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuTraincarBook, options.gpuSerialRoot, options.gpuRootOrder, options.gpuFamilyDispatch, options.gpuTimeoutRootProxy);
   const summary = gpu.summary || {};
-  const gpuCondition = summary.timeoutRootProxy ? 'proxy' : 'strict';
+  const gpuCondition = summary.timeoutRootProxy ? 'proxy' : (summary.traincarBook ? 'strict_traincar_book' : 'strict');
   const conditionLabel = `${CPU_HARNESS_CONDITION}+${gpuCondition}`;
 
   const comparable = Number(summary.comparablePositions || 0);
@@ -264,6 +267,7 @@ function main() {
   if (skipped.length > 0) warnings.push(`cpu_skipped_${skipped.length}`);
   if (Number(summary.skippedEngineMoveMissing || 0) > 0) warnings.push('gpu_missing_engine_move_for_some_positions');
   if (summary.timeoutRootProxy) warnings.push('timeout_root_proxy_condition_not_strict_parity');
+  if (options.gpuTraincarBook && !summary.traincarBook) warnings.push('traincar_book_requested_but_not_active');
 
   const report = {
     ok: failures.length === 0,
@@ -281,6 +285,7 @@ function main() {
       gpuFullQeval: options.gpuFullQeval,
       gpuFilterLegal: options.gpuFilterLegal,
       gpuTraincarEval: options.gpuTraincarEval,
+      gpuTraincarBook: options.gpuTraincarBook,
       gpuSerialRoot: options.gpuSerialRoot,
       gpuRootOrder: options.gpuRootOrder,
       gpuFamilyDispatch: options.gpuFamilyDispatch,
@@ -309,6 +314,10 @@ function main() {
       fighterFamily: summary.fighterFamily || 'unknown',
       familyDispatch: Boolean(summary.familyDispatch),
       timeoutRootProxy: Boolean(summary.timeoutRootProxy),
+      traincarBook: Boolean(summary.traincarBook),
+      traincarBookEntries: Number(summary.traincarBookEntries || 0),
+      traincarBookOverrides: Number(summary.traincarBookOverrides || 0),
+      traincarBookMisses: Number(summary.traincarBookMisses || 0),
       skippedNoMoves: Number(summary.skippedNoMoves || 0),
       skippedEngineMoveMissing: Number(summary.skippedEngineMoveMissing || 0),
     },
@@ -339,6 +348,8 @@ function main() {
     fighterFamily: report.gpuSummary.fighterFamily,
     familyDispatch: report.gpuSummary.familyDispatch,
     timeoutRootProxy: report.gpuSummary.timeoutRootProxy,
+    traincarBook: report.gpuSummary.traincarBook,
+    traincarBookOverrides: report.gpuSummary.traincarBookOverrides,
     condition: report.condition,
     failures: report.failures,
     warnings: report.warnings,

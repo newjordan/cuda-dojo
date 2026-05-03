@@ -21,6 +21,7 @@ function parseArgs(argv) {
     gpuFullQeval: false,
     gpuFilterLegal: false,
     gpuTraincarEval: false,
+    gpuTraincarBook: false,
     gpuSerialRoot: false,
     gpuRootOrder: false,
     gpuFamilyDispatch: false,
@@ -41,6 +42,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
     else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
+    else if (arg === '--gpu-traincar-book') options.gpuTraincarBook = true;
     else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
     else if (arg === '--gpu-root-order') options.gpuRootOrder = true;
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
@@ -104,6 +106,7 @@ function runGpuTrace(options, fighterBlob, fen, cpuMove, legalMoves) {
   if (options.gpuFullQeval) forgeArgs.push('--full-qeval');
   if (options.gpuFilterLegal) forgeArgs.push('--filter-legal');
   if (options.gpuTraincarEval) forgeArgs.push('--traincar-eval');
+  if (options.gpuTraincarBook) forgeArgs.push('--traincar-book');
   if (options.gpuSerialRoot) forgeArgs.push('--serial-root');
   if (options.gpuRootOrder) forgeArgs.push('--root-order');
   if (options.gpuFamilyDispatch) forgeArgs.push('--family-dispatch');
@@ -214,6 +217,7 @@ function main() {
       gpuFullQeval: options.gpuFullQeval,
       gpuFilterLegal: options.gpuFilterLegal,
       gpuTraincarEval: options.gpuTraincarEval,
+      gpuTraincarBook: options.gpuTraincarBook,
       gpuSerialRoot: options.gpuSerialRoot,
       gpuRootOrder: options.gpuRootOrder,
       gpuFamilyDispatch: options.gpuFamilyDispatch,

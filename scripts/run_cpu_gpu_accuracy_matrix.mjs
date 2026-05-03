@@ -29,6 +29,7 @@ function parseArgs(argv) {
     gpuFullQeval: false,
     gpuFilterLegal: false,
     gpuTraincarEval: false,
+    gpuTraincarBook: false,
     gpuSerialRoot: false,
     gpuRootOrder: false,
     gpuFamilyDispatch: false,
@@ -47,6 +48,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
     else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
+    else if (arg === '--gpu-traincar-book') options.gpuTraincarBook = true;
     else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
     else if (arg === '--gpu-root-order') options.gpuRootOrder = true;
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
@@ -71,6 +73,7 @@ function runOne(entry, options) {
   if (options.gpuFullQeval) args.push('--gpu-full-qeval');
   if (options.gpuFilterLegal) args.push('--gpu-filter-legal');
   if (options.gpuTraincarEval) args.push('--gpu-traincar-eval');
+  if (options.gpuTraincarBook) args.push('--gpu-traincar-book');
   if (options.gpuSerialRoot) args.push('--gpu-serial-root');
   if (options.gpuRootOrder) args.push('--gpu-root-order');
   if (options.gpuFamilyDispatch) args.push('--gpu-family-dispatch');

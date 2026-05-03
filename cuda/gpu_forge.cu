@@ -22,6 +22,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <stdint.h>
 #include <fstream>
 #include <string>
 #include <time.h>
@@ -504,6 +505,138 @@ static const char* fighterFamilyName(FighterFamily family) {
     case FIGHTER_FAMILY_RAZORBLADE_II: return "razorblade_ii";
     default: return "unknown";
   }
+}
+
+struct TraincarBookEntry {
+  uint32_t hash;
+  char move[8];
+};
+
+#define MAX_TRAINCAR_BOOK_ENTRIES 8192
+
+static uint32_t fnv1aHash(const char* text, size_t len) {
+  uint32_t h = 0x811c9dc5u;
+  for (size_t i = 0; i < len; i++) {
+    h ^= (unsigned char)text[i];
+    h *= 0x01000193u;
+  }
+  return h;
+}
+
+static bool fenKeyLen(const char* fen, size_t* outLen) {
+  if (!fen || !outLen) return false;
+  const char* p = fen;
+  while (*p && isspace((unsigned char)*p)) p++;
+  const char* start = p;
+  int fields = 0;
+  bool inToken = false;
+  while (*p) {
+    if (isspace((unsigned char)*p)) {
+      if (inToken) {
+        fields++;
+        if (fields >= 3) {
+          *outLen = (size_t)(p - start);
+          return true;
+        }
+        inToken = false;
+      }
+      while (*p && isspace((unsigned char)*p)) p++;
+      continue;
+    }
+    inToken = true;
+    p++;
+  }
+  if (inToken) fields++;
+  if (fields >= 3) {
+    *outLen = (size_t)(p - start);
+    return true;
+  }
+  return false;
+}
+
+static uint32_t hashFenKey(const char* fen) {
+  size_t len = 0;
+  if (!fenKeyLen(fen, &len)) return 0;
+  while (*fen && isspace((unsigned char)*fen)) fen++;
+  return fnv1aHash(fen, len);
+}
+
+static bool readQuotedString(const char* cursor, char* out, size_t outSize, const char** after) {
+  if (!cursor || !out || outSize == 0) return false;
+  const char* p = strchr(cursor, '"');
+  if (!p) return false;
+  p++;
+  size_t n = 0;
+  while (*p && *p != '"') {
+    char ch = *p++;
+    if (ch == '\\' && *p) ch = *p++;
+    if (n + 1 < outSize) out[n++] = ch;
+  }
+  if (*p != '"') return false;
+  out[n] = 0;
+  if (after) *after = p + 1;
+  return true;
+}
+
+static int loadTraincarBook(const char* path, TraincarBookEntry* entries, int maxEntries) {
+  if (!path || !*path || !entries || maxEntries <= 0) return 0;
+  std::ifstream stream(path, std::ios::in | std::ios::binary);
+  if (!stream.good()) return 0;
+  stream.seekg(0, std::ios::end);
+  const std::streamoff size = stream.tellg();
+  if (size <= 0) return 0;
+  std::string text;
+  text.resize((size_t)size);
+  stream.seekg(0, std::ios::beg);
+  stream.read(&text[0], size);
+  if (!stream.good() && !stream.eof()) return 0;
+
+  int count = 0;
+  const char* cursor = text.c_str();
+  while ((cursor = strstr(cursor, "B(")) != NULL) {
+    char fen[160];
+    char move[8];
+    const char* afterFen = NULL;
+    if (!readQuotedString(cursor, fen, sizeof(fen), &afterFen)) { cursor += 2; continue; }
+    const char* comma = strchr(afterFen, ',');
+    if (!comma || !readQuotedString(comma, move, sizeof(move), NULL)) { cursor = afterFen; continue; }
+    const uint32_t hash = hashFenKey(fen);
+    if (hash != 0 && strlen(move) >= 4) {
+      int existing = -1;
+      for (int i = 0; i < count; i++) {
+        if (entries[i].hash == hash) { existing = i; break; }
+      }
+      const int idx = existing >= 0 ? existing : count;
+      if (idx < maxEntries) {
+        entries[idx].hash = hash;
+        strncpy(entries[idx].move, move, sizeof(entries[idx].move) - 1);
+        entries[idx].move[sizeof(entries[idx].move) - 1] = 0;
+        if (existing < 0) count++;
+      }
+    }
+    cursor = comma + 1;
+  }
+  return count;
+}
+
+static bool lookupTraincarBookMove(
+  TraincarBookEntry* entries,
+  int count,
+  const char* fen,
+  char* out,
+  size_t outSize
+) {
+  if (!entries || count <= 0 || !fen || !out || outSize == 0) return false;
+  const uint32_t hash = hashFenKey(fen);
+  if (hash == 0) return false;
+  for (int i = 0; i < count; i++) {
+    if (entries[i].hash == hash) {
+      strncpy(out, entries[i].move, outSize - 1);
+      out[outSize - 1] = 0;
+      return true;
+    }
+  }
+  return false;
 }
 
 // ============================================================================
@@ -1591,9 +1724,15 @@ int main(int argc, char** argv) {
   int rootOrder = 0;
   int familyDispatch = 0;
   int timeoutRootProxy = 0;
+  int traincarBook = 0;
+  const char* traincarBookPath = "frostd4d/variants/the_un.js";
   int positional = 0;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--fighter-blob") == 0) { i++; continue; }
+    if (strcmp(argv[i], "--traincar-book-path") == 0 && i + 1 < argc) {
+      traincarBookPath = argv[++i];
+      continue;
+    }
     if (strcmp(argv[i], "--depth") == 0 && i + 1 < argc) {
       searchDepth = atoi(argv[++i]);
       if (searchDepth < 1) searchDepth = 1;
@@ -1628,6 +1767,10 @@ int main(int argc, char** argv) {
       timeoutRootProxy = 1;
       continue;
     }
+    if (strcmp(argv[i], "--traincar-book") == 0) {
+      traincarBook = 1;
+      continue;
+    }
     if (argv[i][0] == '-') continue;
     if (positional == 0) numConfigs = atoi(argv[i]);
     positional++;
@@ -1658,7 +1801,18 @@ int main(int argc, char** argv) {
       }
     }
   }
+  if (familyDispatch && fighterFamily == FIGHTER_FAMILY_TRAINCAR) traincarBook = 1;
   if (familyDispatch && fighterFamily == FIGHTER_FAMILY_RAZORBLADE_II) timeoutRootProxy = 1;
+  if (traincarBook && fighterFamily != FIGHTER_FAMILY_TRAINCAR) traincarBook = 0;
+  TraincarBookEntry* traincarBookEntries = (TraincarBookEntry*)malloc(MAX_TRAINCAR_BOOK_ENTRIES * sizeof(TraincarBookEntry));
+  int traincarBookCount = 0;
+  if (traincarBook && fighterFamily == FIGHTER_FAMILY_TRAINCAR) {
+    traincarBookCount = loadTraincarBook(traincarBookPath, traincarBookEntries, MAX_TRAINCAR_BOOK_ENTRIES);
+    if (traincarBookCount <= 0) {
+      fprintf(stderr, "[dojo] warning: failed to load traincar book %s; traincar book disabled\n", traincarBookPath);
+      traincarBook = 0;
+    }
+  }
   fprintf(stderr, "[dojo] fighter family: %s\n", fighterFamilyName(fighterFamily));
   fprintf(stderr, "[dojo] search depth: %d\n", searchDepth);
   if (fullQeval) fprintf(stderr, "[dojo] full qsearch eval: enabled\n");
@@ -1668,6 +1822,7 @@ int main(int argc, char** argv) {
   if (rootOrder) fprintf(stderr, "[dojo] root move ordering: enabled\n");
   if (familyDispatch) fprintf(stderr, "[dojo] source-family dispatch: enabled\n");
   if (timeoutRootProxy) fprintf(stderr, "[dojo] timeout root proxy: enabled\n");
+  if (traincarBook) fprintf(stderr, "[dojo] traincar book: enabled (%d entries)\n", traincarBookCount);
 
   // Upload fighter knobs to constant memory for search evaluation
   cudaMemcpyToSymbol(C_FIGHTER_KNOBS, defaults, KNOB_COUNT * sizeof(float));
@@ -1711,6 +1866,7 @@ int main(int argc, char** argv) {
   int totalPos = 0, totalFixable = 0, totalUnfixable = 0;
   int inputLines = 0, parsedLines = 0, comparablePositions = 0, agreements = 0;
   int skippedShort = 0, skippedNoTab = 0, skippedNoMoves = 0, skippedEngineMoveMissing = 0, skippedNoLegalRootScore = 0;
+  int traincarBookOverrides = 0, traincarBookMisses = 0;
 
   char line[512];
   struct timespec start, now;
@@ -1846,6 +2002,24 @@ int main(int argc, char** argv) {
         }
       }
     }
+    if (traincarBook && traincarBookCount > 0 && fighterFamily == FIGHTER_FAMILY_TRAINCAR) {
+      char bookMove[8];
+      if (lookupTraincarBookMove(traincarBookEntries, traincarBookCount, fen, bookMove, sizeof(bookMove))) {
+        int bookIdx = -1;
+        for (int i = 0; i < numMoves; i++) {
+          char mv[8];
+          moveToUci(&h_moves[i], mv, sizeof(mv));
+          if (strcmp(mv, bookMove) == 0) { bookIdx = i; break; }
+        }
+        if (bookIdx >= 0 && h_searchScores[bookIdx] > -99998.0f) {
+          bestIdx = bookIdx;
+          bestScore = h_searchScores[bookIdx];
+          traincarBookOverrides++;
+        } else {
+          traincarBookMisses++;
+        }
+      }
+    }
 
     // Convert search best move to UCI
     char searchMove[8];
@@ -1937,6 +2111,11 @@ int main(int argc, char** argv) {
   printf("\"familyDispatch\":%s,\"timeoutRootProxy\":%s,",
     familyDispatch ? "true" : "false",
     timeoutRootProxy ? "true" : "false");
+  printf("\"traincarBook\":%s,\"traincarBookEntries\":%d,\"traincarBookOverrides\":%d,\"traincarBookMisses\":%d,",
+    traincarBook ? "true" : "false",
+    traincarBookCount,
+    traincarBookOverrides,
+    traincarBookMisses);
   printf("\"verdict\":\"%s\",",
     totalPos==0 ? (agreements > 0 ? "ALL_AGREE" : "NO_DATA") :
     totalFixable*100/totalPos >= 70 ? "ARCHITECTURE_FINE" :
@@ -1964,5 +2143,6 @@ int main(int argc, char** argv) {
   cudaFree(d_defaults); cudaFree(d_moves); cudaFree(d_winRates); cudaFree(d_visits);
   cudaFree(d_searchScores);
   free(h_scoresA); free(h_scoresB); free(h_searchScores); free(h_configs);
+  free(traincarBookEntries);
   return 0;
 }
