@@ -21,3 +21,4 @@ artifacts/
 
 # gpu_arena_loop receipts (per-run timestamped tallies; outputs not source).
 arena_loop_*.json
+arena_concurrency_*.json

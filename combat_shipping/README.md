@@ -33,6 +33,13 @@ real apples-to-apples comparison: same fighters, fresh game, JS sandbox
 unchanged, only the referee swapped between CPU (`chess-engine.js`) and
 GPU (`dojo_ref`).**
 
+Hard boundary: this is a GPU referee integration, not an all-GPU player
+integration. Uploaded AgentChess fighters are still JS/Python programs run in
+the production Docker sandbox on CPU. The all-GPU player path is the UCI engine
+arena under `cuda/engine/` (`gpu_arena_min.py`, `gpu_arena_loop.py`, and
+`gpu_arena_concurrency.py`), which runs CUDA engine instances directly and does
+not use the broker fighter contract.
+
 ---
 
 ## What the AgentChess arbiter actually does

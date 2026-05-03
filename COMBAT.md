@@ -96,6 +96,18 @@ python3 cuda/engine/gpu_arena_min.py \
     --max-plies 200
 ```
 
+### Measure all-GPU game concurrency
+
+```bash
+# No Docker, no JS/Python fighters, no host chess rules. The host only relays
+# UCI tokens between CUDA engine processes and saves the run condition.
+python3 cuda/engine/gpu_arena_concurrency.py \
+    --concurrency 1,2,4,8 \
+    --n-per-level 8 \
+    --max-plies 120 \
+    --out cuda/engine/artifacts/all_gpu_concurrency.json
+```
+
 ### Verify a PGN corpus against the GPU rules (parity check)
 
 ```bash

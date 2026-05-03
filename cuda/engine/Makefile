@@ -88,6 +88,12 @@ arena_gpu_smoke: engine arena_gpu_smoke.sh
 arena_smoke: engine arena_smoke.sh
 	bash ./arena_smoke.sh
 
+arena_concurrency_smoke: engine gpu_arena_concurrency.py
+	$(PYTHON_BIN) ./gpu_arena_concurrency.py --concurrency 1,2 \
+	    --n-per-level 2 --max-plies 8 --game-timeout-s 120 \
+	    --per-move-timeout-s 30 \
+	    --out /tmp/gpu_arena_concurrency_curve_smoke.json
+
 engine_verify_long: engine verify_engine_long.py
 	$(PYTHON_BIN) ./verify_engine_long.py
 
@@ -164,6 +170,7 @@ clean:
 	      engine_test_perft tests/test_makeunmake_symmetry
 	-$(CARGO) clean --manifest-path $(RUST_DIR)/Cargo.toml 2>/dev/null || true
 
-.PHONY: all engine uci_test arena_gpu_smoke arena_smoke engine_verify_long \
+.PHONY: all engine uci_test arena_gpu_smoke arena_smoke arena_concurrency_smoke \
+        engine_verify_long \
         skeleton_test clean engine_test test_zobrist test_tt \
         librefcuda dojo_ref dojo_ref_test dojo_ref_play
