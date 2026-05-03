@@ -25,6 +25,7 @@ function parseArgs(argv) {
     minAccuracy: 0.55,
     minCoverage: 0.75,
     timeoutMs: 300000,
+    gpuDepth: null,
     gpuFullQeval: false,
     gpuFilterLegal: false,
   };
@@ -37,6 +38,7 @@ function parseArgs(argv) {
     else if (arg === '--min-coverage') options.minCoverage = Number(argv[++i] || options.minCoverage);
     else if (arg === '--timeout-ms') options.timeoutMs = Math.max(0, Number(argv[++i] || options.timeoutMs));
     else if (arg === '--no-timeout') options.timeoutMs = 0;
+    else if (arg === '--gpu-depth') options.gpuDepth = Math.max(1, Math.min(12, Number(argv[++i] || 0)));
     else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
   }
@@ -55,6 +57,7 @@ function runOne(entry, options) {
     '--timeout-ms', String(options.timeoutMs),
     '--slug', entry.slug,
   ];
+  if (options.gpuDepth != null) args.push('--gpu-depth', String(options.gpuDepth));
   if (options.gpuFullQeval) args.push('--gpu-full-qeval');
   if (options.gpuFilterLegal) args.push('--gpu-filter-legal');
 

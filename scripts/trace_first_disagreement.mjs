@@ -17,6 +17,7 @@ function parseArgs(argv) {
     sims: 4,
     timeoutMs: 30000,
     out: '',
+    gpuDepth: null,
     gpuFullQeval: false,
     gpuFilterLegal: false,
   };
@@ -31,6 +32,7 @@ function parseArgs(argv) {
     else if (arg === '--timeout-ms') options.timeoutMs = Math.max(0, Number(argv[++i] || options.timeoutMs));
     else if (arg === '--no-timeout') options.timeoutMs = 0;
     else if (arg === '--out') options.out = argv[++i] || '';
+    else if (arg === '--gpu-depth') options.gpuDepth = Math.max(1, Math.min(12, Number(argv[++i] || 0)));
     else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
     else throw new Error(`Unknown argument: ${arg}`);
@@ -88,6 +90,7 @@ function buildCpuTrace(fighterPath, fen) {
 function runGpuTrace(options, fighterBlob, fen, cpuMove, legalMoves) {
   const input = `${fen}\t${cpuMove}\t${legalMoves.join(',')}\n`;
   const forgeArgs = [String(options.configs), String(options.sims), '--fighter-blob', fighterBlob];
+  if (options.gpuDepth != null) forgeArgs.push('--depth', String(options.gpuDepth));
   if (options.gpuFullQeval) forgeArgs.push('--full-qeval');
   if (options.gpuFilterLegal) forgeArgs.push('--filter-legal');
   const command = options.timeoutMs > 0
@@ -128,6 +131,49 @@ function defaultOutPath(fighterPath) {
   return join(REPO_ROOT, 'fighter_accuracy', 'traces', `${slug}_${stamp}.json`);
 }
 
+function summarizeIteration(iteration, moves) {
+  if (!iteration || !Array.isArray(iteration.rootCandidates)) return null;
+  const byMove = {};
+  for (const move of moves) {
+    const candidate = iteration.rootCandidates.find((item) => item.move === move);
+    byMove[move] = candidate
+      ? {
+          score: candidate.score,
+          order: candidate.order,
+          isBest: !!candidate.isBest,
+          givesCheck: !!candidate.givesCheck,
+        }
+      : null;
+  }
+  return {
+    depth: iteration.depth,
+    score: iteration.score,
+    timeMs: iteration.timeMs,
+    nodes: iteration.nodes,
+    candidateCount: iteration.rootCandidates.length,
+    topCandidates: iteration.rootCandidates.slice(0, 8),
+    moves: byMove,
+  };
+}
+
+function summarizeCpuSearch(cpu, gpuMove) {
+  const trace = cpu.trace || {};
+  const iterations = Array.isArray(trace.iterations) ? trace.iterations : [];
+  const lastCompleted = [...iterations].reverse().find((item) => Number(item.nodes || 0) > 0) || null;
+  const lastRecorded = iterations.length ? iterations[iterations.length - 1] : null;
+  const moves = [...new Set([cpu.move, gpuMove].filter(Boolean))];
+  return {
+    selectedSource: trace.selectedSource || null,
+    selectedScore: trace.selectedScore ?? null,
+    selectedLayer: trace.selectedLayer || null,
+    maxDepth: trace.maxDepth ?? null,
+    metrics: cpu.metrics || {},
+    iterationCount: iterations.length,
+    lastCompleted: summarizeIteration(lastCompleted, moves),
+    lastRecorded: lastRecorded === lastCompleted ? null : summarizeIteration(lastRecorded, moves),
+  };
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   const fighterPath = resolve(REPO_ROOT, options.fighter);
@@ -149,6 +195,7 @@ function main() {
       configs: options.configs,
       sims: options.sims,
       timeoutMs: options.timeoutMs,
+      gpuDepth: options.gpuDepth,
       gpuFullQeval: options.gpuFullQeval,
       gpuFilterLegal: options.gpuFilterLegal,
     },
@@ -163,6 +210,10 @@ function main() {
       positions: gpu.parsed?.positions || [],
     },
     firstDisagreement,
+    diagnostics: {
+      cpuSearch: summarizeCpuSearch(cpu, firstDisagreement?.mcts || ''),
+      gpuSearchDepth: gpu.parsed?.summary?.searchDepth ?? options.gpuDepth ?? null,
+    },
     nextDebugTarget: firstDisagreement
       ? `CPU chose ${firstDisagreement.engine}; GPU chose ${firstDisagreement.mcts}. Compare CPU trace against GPU root score/rank for those moves.`
       : 'No disagreement emitted for this FEN; inspect summary skips/agreements.',
@@ -179,6 +230,7 @@ function main() {
     gpuStatus: gpu.status,
     agreementRate: report.gpu.summary?.agreementRate ?? null,
     firstDisagreement,
+    diagnostics: report.diagnostics,
     nextDebugTarget: report.nextDebugTarget,
   }, null, 2) + '\n');
 
