@@ -4,10 +4,10 @@
 - [x] Preserve the strict external CPU-GPU accuracy baseline.
 - [x] Preserve the external conversion matrix baseline for contrast.
 - [x] Add a tracked bridge command that records source hashes and receipts.
-- [ ] Reproduce the strict 0/5 baseline from the tracked bridge.
-- [ ] Promote strict accuracy gate files from the external lab into this repo,
-      or replace the bridge with a fully tracked equivalent.
+- [x] Promote the minimum strict accuracy gate files from the external lab into
+      this repo.
+- [x] Reproduce a tracked 0/5 smoke matrix with explicit timeout conditions.
+- [ ] Reproduce the full strict 24-sample 0/5 baseline from the tracked gate.
 - [ ] Add first mismatch trace for one fighter/FEN pair.
 - [ ] Improve GPU fighter move parity against the CPU fighter.
 - [ ] Add throughput/concurrency curves only after the accuracy gate is honest.
-

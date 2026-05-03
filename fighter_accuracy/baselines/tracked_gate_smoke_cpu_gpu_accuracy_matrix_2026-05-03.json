@@ -1,0 +1,86 @@
+{
+  "ok": false,
+  "generatedAt": "2026-05-03T19:01:33.160Z",
+  "options": {
+    "samples": 4,
+    "configs": 4,
+    "sims": 4,
+    "minAccuracy": 0.55,
+    "minCoverage": 0.75,
+    "timeoutMs": 30000
+  },
+  "total": 5,
+  "passCount": 0,
+  "failed": [
+    "Razor X",
+    "Queensguard",
+    "Firebird",
+    "Fortress",
+    "RazorBlade II"
+  ],
+  "results": [
+    {
+      "name": "Razor X",
+      "fighter": "/home/frosty40/VC_V1/cuda-dojo-public/variants/razor_x.js",
+      "ok": false,
+      "fighterBlob": "/home/frosty40/VC_V1/cuda-dojo-public/variants/razor_x.cuda_fighter_blob.json",
+      "comparablePositions": 4,
+      "agreementRate": 0.5,
+      "coverage": 1,
+      "failures": [
+        "agreement_below_0.55"
+      ],
+      "warnings": [],
+      "jsonPath": "/home/frosty40/VC_V1/cuda-dojo-public/runtime/reports/razor_x_accuracy.cpu_gpu_accuracy.json",
+      "mdPath": "/home/frosty40/VC_V1/cuda-dojo-public/runtime/reports/razor_x_accuracy.cpu_gpu_accuracy.md"
+    },
+    {
+      "name": "Queensguard",
+      "fighter": "/home/frosty40/VC_V1/cuda-dojo-public/variants/queensguard.js",
+      "ok": false,
+      "fighterBlob": "/home/frosty40/VC_V1/cuda-dojo-public/variants/queensguard.cuda_fighter_blob.json",
+      "comparablePositions": 4,
+      "agreementRate": 0.5,
+      "coverage": 1,
+      "failures": [
+        "agreement_below_0.55"
+      ],
+      "warnings": [],
+      "jsonPath": "/home/frosty40/VC_V1/cuda-dojo-public/runtime/reports/queensguard_accuracy.cpu_gpu_accuracy.json",
+      "mdPath": "/home/frosty40/VC_V1/cuda-dojo-public/runtime/reports/queensguard_accuracy.cpu_gpu_accuracy.md"
+    },
+    {
+      "name": "Firebird",
+      "fighter": "variants/firebird.js",
+      "ok": false,
+      "failures": [
+        "Command failed: /usr/bin/node /home/frosty40/VC_V1/cuda-dojo-public/scripts/validate_cpu_gpu_accuracy.mjs --fighter variants/firebird.js --samples 4 --configs 4 --sims 4 --min-accuracy 0.55 --min-coverage 0.75 --timeout-ms 30000 --slug firebird_accuracy\n[dojo] loaded fighter blob /home/frosty40/VC_V1/cuda-dojo-public/variants/firebird_src_dojo_runtime1.cuda_fighter_blob.json\n[dojo] search depth: 5\nnode:internal/errors:984\n  const err = new Error(message);\n              ^\n\nError: Command failed: timeout --kill-after=10s 30s /home/frosty40/VC_V1/cuda-dojo-public/cuda/gpu_forge 4 4 --fighter-blob /home/frosty40/VC_V1/cuda-dojo-public/variants/firebird_src_dojo_runtime1.cuda_fighter_blob.json\n[dojo] loaded fighter blob /home/frosty40/VC_V1/cuda-dojo-public/variants/firebird_src_dojo_runtime1.cuda_fighter_blob.json\n[dojo] search depth: 5\n\n    at genericNodeError (node:internal/errors:984:15)\n    at wrappedFn (node:internal/errors:538:14)\n    at checkExecSyncError (node:child_process:891:11)\n    at execFileSync (node:child_process:927:15)\n    at runGpuForge (file:///home/frosty40/VC_V1/cuda-dojo-public/scripts/validate_cpu_gpu_accuracy.mjs:185:15)\n    at main (file:///home/frosty40/VC_V1/cuda-dojo-public/scripts/validate_cpu_gpu_accuracy.mjs:221:15)\n    at file:///home/frosty40/VC_V1/cuda-dojo-public/scripts/validate_cpu_gpu_accuracy.mjs:302:1\n    at ModuleJob.run (node:internal/modules/esm/module_job:325:25)\n    at async ModuleLoader.import (node:internal/modules/esm/loader:606:24)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5) {\n  status: 124,\n  signal: null,\n  output: [\n    null,\n    '',\n    '[dojo] loaded fighter blob /home/frosty40/VC_V1/cuda-dojo-public/variants/firebird_src_dojo_runtime1.cuda_fighter_blob.json\\n' +\n      '[dojo] search depth: 5\\n'\n  ],\n  pid: 1476177,\n  stdout: '',\n  stderr: '[dojo] loaded fighter blob /home/frosty40/VC_V1/cuda-dojo-public/variants/firebird_src_dojo_runtime1.cuda_fighter_blob.json\\n' +\n    '[dojo] search depth: 5\\n'\n}\n\nNode.js v20.20.2\n"
+      ],
+      "warnings": []
+    },
+    {
+      "name": "Fortress",
+      "fighter": "variants/fortress.js",
+      "ok": false,
+      "failures": [
+        "Command failed: /usr/bin/node /home/frosty40/VC_V1/cuda-dojo-public/scripts/validate_cpu_gpu_accuracy.mjs --fighter variants/fortress.js --samples 4 --configs 4 --sims 4 --min-accuracy 0.55 --min-coverage 0.75 --timeout-ms 30000 --slug fortress_accuracy\n[dojo] loaded fighter blob /home/frosty40/VC_V1/cuda-dojo-public/variants/fortress_src_dojo_runtime1.cuda_fighter_blob.json\n[dojo] search depth: 5\nnode:internal/errors:984\n  const err = new Error(message);\n              ^\n\nError: Command failed: timeout --kill-after=10s 30s /home/frosty40/VC_V1/cuda-dojo-public/cuda/gpu_forge 4 4 --fighter-blob /home/frosty40/VC_V1/cuda-dojo-public/variants/fortress_src_dojo_runtime1.cuda_fighter_blob.json\n[dojo] loaded fighter blob /home/frosty40/VC_V1/cuda-dojo-public/variants/fortress_src_dojo_runtime1.cuda_fighter_blob.json\n[dojo] search depth: 5\n\n    at genericNodeError (node:internal/errors:984:15)\n    at wrappedFn (node:internal/errors:538:14)\n    at checkExecSyncError (node:child_process:891:11)\n    at execFileSync (node:child_process:927:15)\n    at runGpuForge (file:///home/frosty40/VC_V1/cuda-dojo-public/scripts/validate_cpu_gpu_accuracy.mjs:185:15)\n    at main (file:///home/frosty40/VC_V1/cuda-dojo-public/scripts/validate_cpu_gpu_accuracy.mjs:221:15)\n    at file:///home/frosty40/VC_V1/cuda-dojo-public/scripts/validate_cpu_gpu_accuracy.mjs:302:1\n    at ModuleJob.run (node:internal/modules/esm/module_job:325:25)\n    at async ModuleLoader.import (node:internal/modules/esm/loader:606:24)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5) {\n  status: 124,\n  signal: null,\n  output: [\n    null,\n    '',\n    '[dojo] loaded fighter blob /home/frosty40/VC_V1/cuda-dojo-public/variants/fortress_src_dojo_runtime1.cuda_fighter_blob.json\\n' +\n      '[dojo] search depth: 5\\n'\n  ],\n  pid: 1476724,\n  stdout: '',\n  stderr: '[dojo] loaded fighter blob /home/frosty40/VC_V1/cuda-dojo-public/variants/fortress_src_dojo_runtime1.cuda_fighter_blob.json\\n' +\n    '[dojo] search depth: 5\\n'\n}\n\nNode.js v20.20.2\n"
+      ],
+      "warnings": []
+    },
+    {
+      "name": "RazorBlade II",
+      "fighter": "/home/frosty40/VC_V1/cuda-dojo-public/variants/razorblade_ii.js",
+      "ok": false,
+      "fighterBlob": "/home/frosty40/VC_V1/cuda-dojo-public/variants/razorblade_ii_dojo.cuda_fighter_blob.json",
+      "comparablePositions": 4,
+      "agreementRate": 0,
+      "coverage": 1,
+      "failures": [
+        "agreement_below_0.55"
+      ],
+      "warnings": [],
+      "jsonPath": "/home/frosty40/VC_V1/cuda-dojo-public/runtime/reports/razorblade_ii_accuracy.cpu_gpu_accuracy.json",
+      "mdPath": "/home/frosty40/VC_V1/cuda-dojo-public/runtime/reports/razorblade_ii_accuracy.cpu_gpu_accuracy.md"
+    }
+  ]
+}

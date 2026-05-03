@@ -24,6 +24,7 @@ The preserved baseline from the strict lab is:
 
 - [CPU-GPU accuracy matrix](baselines/external_dojo_conversion_lab_cpu_gpu_accuracy_matrix_2026-04-16.md): 0/5 pass
 - [Conversion matrix](baselines/external_dojo_conversion_lab_conversion_matrix_2026-04-16.md): 5/5 pass
+- [Tracked gate smoke matrix](baselines/tracked_gate_smoke_cpu_gpu_accuracy_matrix_2026-05-03.md): 0/5 pass
 
 Interpretation:
 
@@ -31,28 +32,33 @@ Interpretation:
 - GPU fighter move parity does not.
 - Any "done" claim must pass the CPU-GPU accuracy matrix, not only the
   conversion matrix.
+- Timeout is a failure condition, not a hidden skip.
 
-## Canonical Command
+## Canonical Commands
 
-Baseline bridge, expecting the current failing condition:
+Tracked baseline/gate command:
 
 ```bash
 npm run accuracy:gpu-fighter-baseline
 ```
 
+This command fails nonzero until GPU fighter move parity is real. That is
+intentional.
+
+External bridge, expecting the current failing condition:
+
+```bash
+npm run accuracy:gpu-fighter-external-baseline
+```
+
 Snapshot the existing external reports without launching the GPU comparator:
 
 ```bash
-npm run accuracy:gpu-fighter-snapshot
+npm run accuracy:gpu-fighter-external-snapshot
 ```
 
-Hard gate, failing nonzero until GPU fighter move parity is real:
-
-```bash
-npm run accuracy:gpu-fighter-gate
-```
-
-Both commands write a receipt under `fighter_accuracy/receipts/` with:
+The external bridge commands write a receipt under `fighter_accuracy/receipts/`
+with:
 
 - exact command
 - lab path
@@ -66,3 +72,5 @@ change, the hashes change.
 
 The bridge has a default 300 second timeout. A timeout is a failing condition,
 not a pass, and is recorded in the receipt.
+
+The tracked port provenance is in [PORT_MANIFEST.md](PORT_MANIFEST.md).

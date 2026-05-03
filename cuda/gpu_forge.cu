@@ -1,0 +1,1448 @@
+// ============================================================================
+// GPU FORGE v2 — PeSTO evaluation + Alpha-Beta search
+//
+// v1 used MCTS random playouts for move selection → 0% agreement with CPU
+// v2 uses the same PeSTO piece-square tables as CPU fighters + alpha-beta
+// negamax search, achieving deterministic move selection that matches CPU
+// fighter decision-making.
+//
+// Input: batch of FEN positions (stdin, one per line)
+// Each line: FEN\tcurrent_engine_move\tlegal1,legal2,...
+//
+// For each position:
+//   1. Alpha-beta search finds the best move (GPU, root parallelism)
+//   2. Compare with CPU engine move
+//   3. If disagree, knob tuner tests configs (GPU, evalWithKnobs)
+//
+// Usage: cat positions.txt | ./gpu_forge [num_configs] [mcts_sims] [--fighter-blob path] [--depth N]
+// ============================================================================
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <fstream>
+#include <string>
+#include <time.h>
+#include <cuda_runtime.h>
+#include <curand_kernel.h>
+
+#include "generated/dojo_active_fighter_legacy.h"
+
+#define MAX_POSITIONS 10000
+#define MAX_FEN_LEN 128
+#define MAX_MOVE_LEN 8
+#define BLOCK_SIZE 256
+#define KNOB_COUNT 44
+#define MAX_BOARD 64
+#define MAX_MOVES 256
+#define DEFAULT_SEARCH_DEPTH 5
+#define MAX_QUIESCE_DEPTH 6
+
+// Piece types
+#define EMPTY 0
+#define PAWN 1
+#define KNIGHT 2
+#define BISHOP 3
+#define ROOK 4
+#define QUEEN 5
+#define KING 6
+#define WHITE_FLAG 0
+#define BLACK_FLAG 8
+
+// ============================================================================
+// PeSTO PIECE-SQUARE TABLES (constant memory)
+// Identical to CPU fighter tables. Index 0=a8, 63=h1.
+// White perspective; black uses MIRROR lookup.
+// ============================================================================
+
+__constant__ int C_MG_PIECE_VAL[7] = {0, 82, 337, 365, 477, 1025, 0};
+__constant__ int C_EG_PIECE_VAL[7] = {0, 94, 281, 297, 512, 936, 0};
+__constant__ int C_PHASE_WEIGHTS[7] = {0, 0, 1, 1, 2, 4, 0};
+
+__constant__ int C_MG_PST[7][64] = {
+  // [0] = EMPTY — unused
+  {0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+   0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0},
+  // [1] = PAWN MG
+  {0,0,0,0,0,0,0,0,
+   98,134,61,95,68,126,34,-11,
+   -6,7,26,31,65,56,25,-20,
+   -14,13,6,21,23,12,17,-23,
+   -27,-2,-5,12,17,6,10,-25,
+   -26,-4,-4,-10,3,3,33,-12,
+   -35,-1,-20,-23,-15,24,38,-22,
+   0,0,0,0,0,0,0,0},
+  // [2] = KNIGHT MG
+  {-167,-89,-34,-49,61,-97,50,-73,
+   -73,-41,72,36,23,62,7,-17,
+   -47,60,37,65,84,129,73,44,
+   -9,17,19,53,37,69,18,22,
+   -13,4,16,13,28,19,21,-8,
+   -23,-9,12,10,19,17,25,-16,
+   -29,-53,-12,-3,-1,18,-14,-19,
+   -105,-21,-58,-33,-17,-28,-19,-23},
+  // [3] = BISHOP MG
+  {-29,4,-82,-37,-25,-42,7,-8,
+   -26,16,-18,-13,30,59,18,-47,
+   -16,37,43,40,35,50,37,-2,
+   -4,5,19,50,37,37,7,-2,
+   -6,13,13,26,34,12,10,4,
+   0,15,15,15,14,27,18,10,
+   4,15,16,0,7,21,33,1,
+   -33,-3,-14,-21,-13,-12,-39,-21},
+  // [4] = ROOK MG
+  {32,42,32,51,63,9,31,43,
+   27,32,58,62,80,67,26,44,
+   -5,19,26,36,17,45,61,16,
+   -24,-11,7,26,24,35,-8,-20,
+   -36,-26,-12,-1,9,-7,6,-23,
+   -45,-25,-16,-17,3,0,-5,-33,
+   -44,-16,-20,-9,-1,11,-6,-71,
+   -19,-13,1,17,16,7,-37,-26},
+  // [5] = QUEEN MG
+  {-28,0,29,12,59,44,43,45,
+   -24,-39,-5,1,-16,57,28,54,
+   -13,-17,7,8,29,56,47,57,
+   -27,-27,-16,-16,-1,17,-2,1,
+   -9,-26,-9,-10,-2,-4,3,-3,
+   -14,-2,-11,-2,-5,2,14,5,
+   -35,-8,11,2,8,15,-3,1,
+   -1,-18,-9,10,-15,-25,-31,-50},
+  // [6] = KING MG
+  {-65,23,16,-15,-56,-34,2,13,
+   29,-1,-20,-7,-8,-4,-38,-29,
+   -9,24,2,-16,-20,6,22,-22,
+   -17,-20,-12,-27,-30,-25,-14,-36,
+   -49,-1,-27,-39,-46,-44,-33,-51,
+   -14,-14,-22,-46,-44,-30,-15,-27,
+   1,7,-8,-64,-43,-16,9,8,
+   -15,36,12,-54,8,-28,24,14}
+};
+
+__constant__ int C_EG_PST[7][64] = {
+  // [0] = EMPTY — unused
+  {0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+   0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0},
+  // [1] = PAWN EG
+  {0,0,0,0,0,0,0,0,
+   178,173,158,134,147,132,165,187,
+   94,100,85,67,56,53,82,84,
+   32,24,13,5,-2,4,17,17,
+   13,9,-3,-7,-7,-8,3,-1,
+   4,7,-6,1,0,-5,-1,-8,
+   13,8,8,10,13,0,2,-7,
+   0,0,0,0,0,0,0,0},
+  // [2] = KNIGHT EG
+  {-58,-38,-13,-28,-31,-27,-63,-99,
+   -25,-8,-25,-2,-9,-25,-24,-52,
+   -24,-20,10,9,-1,-9,-19,-41,
+   -17,3,22,22,22,11,8,-18,
+   -18,-6,16,25,16,17,4,-18,
+   -23,-3,-1,15,10,-3,-20,-22,
+   -42,-20,-10,-5,-2,-20,-23,-44,
+   -29,-51,-23,-15,-22,-18,-50,-64},
+  // [3] = BISHOP EG
+  {-14,-21,-11,-8,-7,-9,-17,-24,
+   -8,-4,7,-12,-3,-13,-4,-14,
+   2,-8,0,-1,-2,6,0,4,
+   -3,9,12,9,14,10,3,2,
+   -6,3,13,19,7,10,-3,-9,
+   -12,-3,8,10,13,3,-7,-15,
+   -14,-18,-7,-1,4,-9,-15,-27,
+   -23,-9,-23,-5,-9,-16,-5,-17},
+  // [4] = ROOK EG
+  {13,10,18,15,12,12,8,5,
+   11,13,13,11,-3,7,7,8,
+   7,7,7,5,4,-3,-5,3,
+   4,3,13,1,2,1,-1,2,
+   3,5,8,4,-5,-6,-8,-11,
+   -4,0,-5,-1,-7,-12,-8,-16,
+   -6,-6,0,2,-9,-9,-11,-3,
+   -9,2,3,-1,-5,-13,4,-20},
+  // [5] = QUEEN EG
+  {-9,22,22,27,27,19,10,20,
+   -17,20,32,41,58,25,30,0,
+   -20,6,9,49,47,35,19,9,
+   3,22,24,45,57,40,57,36,
+   -18,28,19,47,31,34,39,23,
+   -16,-27,15,6,9,17,10,5,
+   -22,-23,-30,-16,-16,-23,-36,-32,
+   -33,-28,-22,-43,-5,-32,-20,-41},
+  // [6] = KING EG
+  {-74,-35,-18,-18,-11,15,4,-17,
+   -12,17,14,17,17,38,23,11,
+   10,17,23,15,20,45,44,13,
+   -8,22,24,27,26,33,26,3,
+   -18,-4,21,24,27,23,9,-11,
+   -19,-3,11,21,23,16,7,-9,
+   -27,-11,4,13,14,4,-5,-17,
+   -53,-34,-21,-11,-28,-14,-24,-43}
+};
+
+// Mirror table: flips square for black PST lookup (a8↔a1 etc.)
+__constant__ int C_MIRROR[64] = {
+  56,57,58,59,60,61,62,63,
+  48,49,50,51,52,53,54,55,
+  40,41,42,43,44,45,46,47,
+  32,33,34,35,36,37,38,39,
+  24,25,26,27,28,29,30,31,
+  16,17,18,19,20,21,22,23,
+   8, 9,10,11,12,13,14,15,
+   0, 1, 2, 3, 4, 5, 6, 7
+};
+
+// MVV-LVA victim values for move ordering
+__constant__ int C_MVV_VAL[7] = {0, 100, 320, 330, 500, 900, 20000};
+
+// Fighter personality knobs — loaded at runtime from blob
+__constant__ float C_FIGHTER_KNOBS[KNOB_COUNT];
+
+// ============================================================================
+// DATA STRUCTURES
+// ============================================================================
+
+struct Board {
+  int pieces[64];
+  int side;      // 0=white, 1=black
+  int phase;     // material phase (0-24)
+  int castling;  // bitmask (unused in search but kept for compat)
+  int epSq;      // en passant square (-1 if none)
+  float mgScore; // incremental middlegame PeSTO score (white-relative)
+  float egScore; // incremental endgame PeSTO score (white-relative)
+};
+
+struct KnobConfig {
+  float knobs[KNOB_COUNT];
+};
+
+struct Move {
+  int from, to, promo;
+};
+
+// ============================================================================
+// HOST: String utilities
+// ============================================================================
+
+static inline char* ltrim(char* s) {
+  while (s && *s && isspace((unsigned char)*s)) s++;
+  return s;
+}
+
+static inline void rtrimInPlace(char* s) {
+  if (!s) return;
+  int len = (int)strlen(s);
+  while (len > 0 && isspace((unsigned char)s[len - 1])) {
+    s[len - 1] = 0;
+    len--;
+  }
+}
+
+static int parseUciSquare(const char* s) {
+  if (!s || !s[0] || !s[1]) return -1;
+  char file = (char)tolower((unsigned char)s[0]);
+  char rank = s[1];
+  if (file < 'a' || file > 'h' || rank < '1' || rank > '8') return -1;
+  return (8 - (rank - '0')) * 8 + (file - 'a');
+}
+
+static bool parseUciMoveToken(const char* token, Move* out) {
+  if (!token || !out) return false;
+  while (*token && isspace((unsigned char)*token)) token++;
+  if (!token[0] || !token[1] || !token[2] || !token[3]) return false;
+  int from = parseUciSquare(token);
+  int to = parseUciSquare(token + 2);
+  if (from < 0 || to < 0) return false;
+  out->from = from;
+  out->to = to;
+  out->promo = 0;
+  return true;
+}
+
+static int parseLegalMoveList(char* movesText, Move* outMoves, int maxMoves) {
+  if (!movesText || !outMoves || maxMoves <= 0) return 0;
+  int count = 0;
+  char* cursor = movesText;
+  while (cursor && *cursor && count < maxMoves) {
+    char* token = cursor;
+    char* comma = strchr(cursor, ',');
+    if (comma) { *comma = 0; cursor = comma + 1; }
+    else { cursor = NULL; }
+    token = ltrim(token);
+    rtrimInPlace(token);
+    if (!*token) continue;
+    Move mv;
+    if (parseUciMoveToken(token, &mv)) outMoves[count++] = mv;
+  }
+  return count;
+}
+
+// ============================================================================
+// HOST: Runtime fighter blob loader
+// ============================================================================
+
+static const char* resolveFighterBlobPath(int argc, char** argv) {
+  const char* envPath = getenv("DOJO_CUDA_FIGHTER_BLOB");
+  const char* resolved = (envPath && *envPath) ? envPath : NULL;
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--fighter-blob") == 0 && i + 1 < argc) {
+      resolved = argv[++i];
+    }
+  }
+  return resolved;
+}
+
+static int parseFloatArray(const char* start, float* out, int maxCount) {
+  int count = 0;
+  const char* cursor = start;
+  while (*cursor && *cursor != ']' && count < maxCount) {
+    while (*cursor && (isspace((unsigned char)*cursor) || *cursor == ',')) cursor++;
+    if (*cursor == ']') break;
+    char* end = NULL;
+    double value = strtod(cursor, &end);
+    if (end == cursor) return -1;
+    out[count++] = (float)value;
+    cursor = end;
+  }
+  return count;
+}
+
+static bool loadLegacyDefaultsFromBlob(const char* blobPath, float* out, int count) {
+  if (!blobPath || !*blobPath) return false;
+  std::ifstream stream(blobPath, std::ios::in | std::ios::binary);
+  if (!stream.good()) return false;
+  stream.seekg(0, std::ios::end);
+  const std::streamoff size = stream.tellg();
+  if (size <= 0) return false;
+  std::string text;
+  text.resize((size_t)size);
+  stream.seekg(0, std::ios::beg);
+  stream.read(&text[0], size);
+  if (!stream.good() && !stream.eof()) return false;
+  const char* root = text.c_str();
+  const char* pack = strstr(root, "\"legacy44Pack\"");
+  if (!pack) return false;
+  const char* values = strstr(pack, "\"values\"");
+  if (!values) return false;
+  const char* open = strchr(values, '[');
+  if (!open) return false;
+  float legacy44[DOJO_ACTIVE_FIGHTER_LEGACY44_COUNT];
+  const int parsed = parseFloatArray(open + 1, legacy44, DOJO_ACTIVE_FIGHTER_LEGACY44_COUNT);
+  if (parsed < DOJO_ACTIVE_FIGHTER_LEGACY44_COUNT) return false;
+  for (int i = 0; i < count && i < DOJO_ACTIVE_FIGHTER_LEGACY44_COUNT; i++)
+    out[i] = legacy44[i];
+  for (int i = DOJO_ACTIVE_FIGHTER_LEGACY44_COUNT; i < count; i++)
+    out[i] = legacy44[DOJO_ACTIVE_FIGHTER_LEGACY44_COUNT - 1];
+  return true;
+}
+
+// ============================================================================
+// HOST: Parse FEN — now computes incremental PeSTO mg/eg scores
+// ============================================================================
+
+// Host-side PST copies for parseFen (constant memory is device-only)
+static const int H_MG_PIECE_VAL[7] = {0, 82, 337, 365, 477, 1025, 0};
+static const int H_EG_PIECE_VAL[7] = {0, 94, 281, 297, 512, 936, 0};
+static const int H_PHASE_WEIGHTS[7] = {0, 0, 1, 1, 2, 4, 0};
+static const int H_MG_PST[7][64] = {
+  {0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+   0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,98,134,61,95,68,126,34,-11,-6,7,26,31,65,56,25,-20,
+   -14,13,6,21,23,12,17,-23,-27,-2,-5,12,17,6,10,-25,-26,-4,-4,-10,3,3,33,-12,
+   -35,-1,-20,-23,-15,24,38,-22,0,0,0,0,0,0,0,0},
+  {-167,-89,-34,-49,61,-97,50,-73,-73,-41,72,36,23,62,7,-17,-47,60,37,65,84,129,73,44,
+   -9,17,19,53,37,69,18,22,-13,4,16,13,28,19,21,-8,-23,-9,12,10,19,17,25,-16,
+   -29,-53,-12,-3,-1,18,-14,-19,-105,-21,-58,-33,-17,-28,-19,-23},
+  {-29,4,-82,-37,-25,-42,7,-8,-26,16,-18,-13,30,59,18,-47,-16,37,43,40,35,50,37,-2,
+   -4,5,19,50,37,37,7,-2,-6,13,13,26,34,12,10,4,0,15,15,15,14,27,18,10,
+   4,15,16,0,7,21,33,1,-33,-3,-14,-21,-13,-12,-39,-21},
+  {32,42,32,51,63,9,31,43,27,32,58,62,80,67,26,44,-5,19,26,36,17,45,61,16,
+   -24,-11,7,26,24,35,-8,-20,-36,-26,-12,-1,9,-7,6,-23,-45,-25,-16,-17,3,0,-5,-33,
+   -44,-16,-20,-9,-1,11,-6,-71,-19,-13,1,17,16,7,-37,-26},
+  {-28,0,29,12,59,44,43,45,-24,-39,-5,1,-16,57,28,54,-13,-17,7,8,29,56,47,57,
+   -27,-27,-16,-16,-1,17,-2,1,-9,-26,-9,-10,-2,-4,3,-3,-14,-2,-11,-2,-5,2,14,5,
+   -35,-8,11,2,8,15,-3,1,-1,-18,-9,10,-15,-25,-31,-50},
+  {-65,23,16,-15,-56,-34,2,13,29,-1,-20,-7,-8,-4,-38,-29,-9,24,2,-16,-20,6,22,-22,
+   -17,-20,-12,-27,-30,-25,-14,-36,-49,-1,-27,-39,-46,-44,-33,-51,-14,-14,-22,-46,-44,-30,-15,-27,
+   1,7,-8,-64,-43,-16,9,8,-15,36,12,-54,8,-28,24,14}
+};
+static const int H_EG_PST[7][64] = {
+  {0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+   0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,178,173,158,134,147,132,165,187,94,100,85,67,56,53,82,84,
+   32,24,13,5,-2,4,17,17,13,9,-3,-7,-7,-8,3,-1,4,7,-6,1,0,-5,-1,-8,
+   13,8,8,10,13,0,2,-7,0,0,0,0,0,0,0,0},
+  {-58,-38,-13,-28,-31,-27,-63,-99,-25,-8,-25,-2,-9,-25,-24,-52,-24,-20,10,9,-1,-9,-19,-41,
+   -17,3,22,22,22,11,8,-18,-18,-6,16,25,16,17,4,-18,-23,-3,-1,15,10,-3,-20,-22,
+   -42,-20,-10,-5,-2,-20,-23,-44,-29,-51,-23,-15,-22,-18,-50,-64},
+  {-14,-21,-11,-8,-7,-9,-17,-24,-8,-4,7,-12,-3,-13,-4,-14,2,-8,0,-1,-2,6,0,4,
+   -3,9,12,9,14,10,3,2,-6,3,13,19,7,10,-3,-9,-12,-3,8,10,13,3,-7,-15,
+   -14,-18,-7,-1,4,-9,-15,-27,-23,-9,-23,-5,-9,-16,-5,-17},
+  {13,10,18,15,12,12,8,5,11,13,13,11,-3,7,7,8,7,7,7,5,4,-3,-5,3,
+   4,3,13,1,2,1,-1,2,3,5,8,4,-5,-6,-8,-11,-4,0,-5,-1,-7,-12,-8,-16,
+   -6,-6,0,2,-9,-9,-11,-3,-9,2,3,-1,-5,-13,4,-20},
+  {-9,22,22,27,27,19,10,20,-17,20,32,41,58,25,30,0,-20,6,9,49,47,35,19,9,
+   3,22,24,45,57,40,57,36,-18,28,19,47,31,34,39,23,-16,-27,15,6,9,17,10,5,
+   -22,-23,-30,-16,-16,-23,-36,-32,-33,-28,-22,-43,-5,-32,-20,-41},
+  {-74,-35,-18,-18,-11,15,4,-17,-12,17,14,17,17,38,23,11,10,17,23,15,20,45,44,13,
+   -8,22,24,27,26,33,26,3,-18,-4,21,24,27,23,9,-11,-19,-3,11,21,23,16,7,-9,
+   -27,-11,4,13,14,4,-5,-17,-53,-34,-21,-11,-28,-14,-24,-43}
+};
+
+void parseFen(const char* fen, Board* b) {
+  memset(b, 0, sizeof(Board));
+  b->epSq = -1;
+  b->mgScore = 0;
+  b->egScore = 0;
+  int sq = 0;
+  const char* p = fen;
+  while (*p && *p != ' ') {
+    if (*p == '/') { p++; continue; }
+    if (*p >= '1' && *p <= '8') { sq += *p - '0'; p++; continue; }
+    int piece = 0, color = 0;
+    switch (*p) {
+      case 'P': piece=PAWN; break; case 'N': piece=KNIGHT; break;
+      case 'B': piece=BISHOP; break; case 'R': piece=ROOK; break;
+      case 'Q': piece=QUEEN; break; case 'K': piece=KING; break;
+      case 'p': piece=PAWN; color=BLACK_FLAG; break; case 'n': piece=KNIGHT; color=BLACK_FLAG; break;
+      case 'b': piece=BISHOP; color=BLACK_FLAG; break; case 'r': piece=ROOK; color=BLACK_FLAG; break;
+      case 'q': piece=QUEEN; color=BLACK_FLAG; break; case 'k': piece=KING; color=BLACK_FLAG; break;
+    }
+    if (piece) {
+      b->pieces[sq] = piece | color;
+      int isW = (color == 0);
+      int pstIdx = isW ? sq : ((7 - sq/8)*8 + sq%8); // mirror for black
+      float mg = (float)(H_MG_PIECE_VAL[piece] + H_MG_PST[piece][pstIdx]);
+      float eg = (float)(H_EG_PIECE_VAL[piece] + H_EG_PST[piece][pstIdx]);
+      if (isW) { b->mgScore += mg; b->egScore += eg; }
+      else     { b->mgScore -= mg; b->egScore -= eg; }
+      b->phase += H_PHASE_WEIGHTS[piece];
+    }
+    sq++; p++;
+  }
+  if (*p == ' ') { p++; b->side = (*p == 'b') ? 1 : 0; }
+  if (b->phase > 24) b->phase = 24;
+}
+
+// ============================================================================
+// DEVICE: Move generation (pseudo-legal, shared by MCTS and search)
+// ============================================================================
+
+__device__ int inBounds(int r, int c) { return r >= 0 && r < 8 && c >= 0 && c < 8; }
+
+__device__ int generateMoves(Board* b, Move* moves) {
+  int count = 0;
+  int side = b->side;
+  int friendly = side ? BLACK_FLAG : WHITE_FLAG;
+  int enemy = side ? WHITE_FLAG : BLACK_FLAG;
+
+  for (int sq = 0; sq < 64 && count < MAX_MOVES - 4; sq++) {
+    int pc = b->pieces[sq];
+    if (!pc || (pc & 8) != friendly) continue;
+    int type = pc & 7;
+    int r = sq / 8, c = sq % 8;
+
+    if (type == PAWN) {
+      int dir = (friendly == WHITE_FLAG) ? -1 : 1;
+      int startRank = (friendly == WHITE_FLAG) ? 6 : 1;
+      int nr = r + dir;
+      if (inBounds(nr, c) && !b->pieces[nr*8+c]) {
+        moves[count++] = {sq, nr*8+c, 0};
+        if (r == startRank) {
+          int nr2 = r + dir*2;
+          if (!b->pieces[nr2*8+c]) moves[count++] = {sq, nr2*8+c, 0};
+        }
+      }
+      for (int dc = -1; dc <= 1; dc += 2) {
+        int nc = c + dc;
+        if (inBounds(nr, nc)) {
+          int target = b->pieces[nr*8+nc];
+          if (target && (target & 8) == (unsigned)enemy) moves[count++] = {sq, nr*8+nc, 0};
+        }
+      }
+    } else if (type == KNIGHT) {
+      int kd[][2] = {{-2,-1},{-2,1},{-1,-2},{-1,2},{1,-2},{1,2},{2,-1},{2,1}};
+      for (int d = 0; d < 8; d++) {
+        int nr = r+kd[d][0], nc = c+kd[d][1];
+        if (inBounds(nr,nc)) {
+          int t = b->pieces[nr*8+nc];
+          if (!t || (t&8)==(unsigned)enemy) moves[count++] = {sq, nr*8+nc, 0};
+        }
+      }
+    } else if (type == KING) {
+      for (int dr=-1; dr<=1; dr++) for (int dc=-1; dc<=1; dc++) {
+        if (!dr && !dc) continue;
+        int nr=r+dr, nc=c+dc;
+        if (inBounds(nr,nc)) {
+          int t = b->pieces[nr*8+nc];
+          if (!t || (t&8)==(unsigned)enemy) moves[count++] = {sq, nr*8+nc, 0};
+        }
+      }
+    } else { // Bishop, Rook, Queen — sliding pieces
+      int dirs[8][2] = {{-1,-1},{-1,0},{-1,1},{0,-1},{0,1},{1,-1},{1,0},{1,1}};
+      for (int d = 0; d < 8; d++) {
+        int isDiag = (dirs[d][0] != 0 && dirs[d][1] != 0);
+        if (type == BISHOP && !isDiag) continue;
+        if (type == ROOK && isDiag) continue;
+        int nr = r+dirs[d][0], nc = c+dirs[d][1];
+        while (inBounds(nr,nc)) {
+          int t = b->pieces[nr*8+nc];
+          if (!t) { moves[count++] = {sq, nr*8+nc, 0}; }
+          else { if ((t&8)==(unsigned)enemy) moves[count++] = {sq, nr*8+nc, 0}; break; }
+          nr += dirs[d][0]; nc += dirs[d][1];
+        }
+      }
+    }
+  }
+  return count;
+}
+
+// ============================================================================
+// DEVICE: Make move with incremental PeSTO score updates
+// Handles auto-queening for pawn promotions.
+// ============================================================================
+
+__device__ void makeMove(Board* b, Move* m) {
+  int moving = b->pieces[m->from];
+  int captured = b->pieces[m->to];
+  int movingType = moving & 7;
+  int movingIsW = (moving & 8) == 0;
+
+  // Remove captured piece's PST contribution
+  if (captured) {
+    int capType = captured & 7;
+    int capIsW = (captured & 8) == 0;
+    int pstIdx = capIsW ? m->to : C_MIRROR[m->to];
+    float cmg = (float)(C_MG_PIECE_VAL[capType] + C_MG_PST[capType][pstIdx]);
+    float ceg = (float)(C_EG_PIECE_VAL[capType] + C_EG_PST[capType][pstIdx]);
+    if (capIsW) { b->mgScore -= cmg; b->egScore -= ceg; }
+    else        { b->mgScore += cmg; b->egScore += ceg; }
+    b->phase -= C_PHASE_WEIGHTS[capType];
+    if (b->phase < 0) b->phase = 0;
+  }
+
+  // Determine destination piece type (auto-queen on promotion)
+  int destType = movingType;
+  if (movingType == PAWN) {
+    int destRank = m->to / 8;
+    if ((movingIsW && destRank == 0) || (!movingIsW && destRank == 7))
+      destType = QUEEN;
+  }
+
+  // Update PST scores: remove from source, add at destination
+  int fromPst = movingIsW ? m->from : C_MIRROR[m->from];
+  int toPst   = movingIsW ? m->to   : C_MIRROR[m->to];
+  float fromMg = (float)(C_MG_PIECE_VAL[movingType] + C_MG_PST[movingType][fromPst]);
+  float fromEg = (float)(C_EG_PIECE_VAL[movingType] + C_EG_PST[movingType][fromPst]);
+  float toMg   = (float)(C_MG_PIECE_VAL[destType]   + C_MG_PST[destType][toPst]);
+  float toEg   = (float)(C_EG_PIECE_VAL[destType]   + C_EG_PST[destType][toPst]);
+  if (movingIsW) { b->mgScore += toMg - fromMg; b->egScore += toEg - fromEg; }
+  else           { b->mgScore -= toMg - fromMg; b->egScore -= toEg - fromEg; }
+
+  // Update phase for promotion
+  if (destType != movingType) {
+    b->phase += C_PHASE_WEIGHTS[destType] - C_PHASE_WEIGHTS[movingType];
+    if (b->phase > 24) b->phase = 24;
+    b->pieces[m->to] = (movingIsW ? 0 : BLACK_FLAG) | destType;
+  } else {
+    b->pieces[m->to] = moving;
+  }
+  b->pieces[m->from] = EMPTY;
+  b->side = 1 - b->side;
+}
+
+// ============================================================================
+// DEVICE: MCTS playout (kept for knob tuning backward compatibility)
+// ============================================================================
+
+__device__ float playout(Board startBoard, curandState* rng) {
+  Board b = startBoard;
+  Move moves[MAX_MOVES];
+  for (int ply = 0; ply < 200; ply++) {
+    int nMoves = generateMoves(&b, moves);
+    if (nMoves == 0) return b.side == startBoard.side ? 0.0f : 1.0f;
+    int idx = curand(rng) % nMoves;
+    makeMove(&b, &moves[idx]);
+  }
+  // Terminal material eval
+  int mat = 0;
+  int vals[] = {0, 100, 320, 330, 500, 900, 0};
+  for (int i = 0; i < 64; i++) {
+    int pc = b.pieces[i];
+    if (!pc) continue;
+    mat += (pc & 8) ? -vals[pc & 7] : vals[pc & 7];
+  }
+  float score = 0.5f + mat / 5000.0f;
+  if (score > 1.0f) score = 1.0f;
+  if (score < 0.0f) score = 0.0f;
+  return startBoard.side == 0 ? score : 1.0f - score;
+}
+
+__global__ void mctsKernel(
+  Board* d_board, Move* d_moves, int numMoves,
+  float* d_winRates, int* d_visits, int simsPerMove, unsigned long long seed
+) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  int totalThreads = simsPerMove * numMoves;
+  if (tid >= totalThreads) return;
+  int moveIdx = tid / simsPerMove;
+  if (moveIdx >= numMoves) return;
+  curandState rng;
+  curand_init(seed, tid, 0, &rng);
+  Board b = *d_board;
+  makeMove(&b, &d_moves[moveIdx]);
+  float result = playout(b, &rng);
+  atomicAdd(&d_winRates[moveIdx], result);
+  atomicAdd(&d_visits[moveIdx], 1);
+}
+
+// ============================================================================
+// DEVICE: Full evaluation — PeSTO base + personality brain adjustments
+// Combines incremental PeSTO mg/eg scores with knob-weighted brain features
+// (pawn structure, king safety, rook placement, bishop pair, queen guard).
+// Returns score relative to side to move (positive = good for side to move).
+// ============================================================================
+
+__device__ float evalPosition(Board* b) {
+  int ph = b->phase;
+  if (ph > 24) ph = 24;
+  if (ph < 0) ph = 0;
+  int egPh = 24 - ph;
+
+  // Read layer weights from fighter knobs
+  float pawnW = C_FIGHTER_KNOBS[0], kingW = C_FIGHTER_KNOBS[1];
+  float queenW = C_FIGHTER_KNOBS[2], rookW = C_FIGHTER_KNOBS[3];
+  float minorW = C_FIGHTER_KNOBS[4], tempoW = C_FIGHTER_KNOBS[5];
+  float agg = C_FIGHTER_KNOBS[24];
+
+  // Aggression adjustment on layer weights
+  tempoW += (agg - 8.0f) * 0.5f;
+  kingW  -= (agg - 8.0f) * 0.25f;
+  pawnW  -= (agg - 8.0f) * 0.25f;
+
+  // === Board scan: pawn files, piece counts, king squares ===
+  int wBish = 0, bBish = 0, wQueens = 0, bQueens = 0;
+  int wPF[8]={0,0,0,0,0,0,0,0}, bPF[8]={0,0,0,0,0,0,0,0};
+  int wPR[8], bPR[8];
+  for (int i=0;i<8;i++){wPR[i]=7;bPR[i]=0;}
+  int wKSq = -1, bKSq = -1;
+  int pawnCount = 0, openFiles = 0;
+
+  for (int sq = 0; sq < 64; sq++) {
+    int pc = b->pieces[sq];
+    if (!pc) continue;
+    int type = pc & 7;
+    int isW = (pc & 8) == 0;
+    int f = sq & 7, r = sq / 8;
+    if (type==PAWN) {
+      pawnCount++;
+      if (isW) { wPF[f]++; if (r < wPR[f]) wPR[f] = r; }
+      else     { bPF[f]++; if (r > bPR[f]) bPR[f] = r; }
+    }
+    if (type==BISHOP) { if (isW) wBish++; else bBish++; }
+    if (type==QUEEN)  { if (isW) wQueens++; else bQueens++; }
+    if (type==KING)   { if (isW) wKSq=sq; else bKSq=sq; }
+  }
+  for (int f=0;f<8;f++) if (wPF[f]==0 && bPF[f]==0) openFiles++;
+
+  // === Position classification adjustments ===
+  int isOpening = ph >= 20;
+  int isEndgame = ph < 8;
+  int isOpen = openFiles >= 4;
+  int isClosed = openFiles <= 2 && pawnCount >= 10;
+  int queensOn = wQueens > 0 && bQueens > 0;
+
+  float posAdj[6] = {0,0,0,0,0,0};
+  if (isOpening)      { float a[]={-2,4,2,-4,0,2}; for(int i=0;i<6;i++) posAdj[i]+=a[i]; }
+  else if (isEndgame) { float a[]={4,-4,-4,4,0,2}; for(int i=0;i<6;i++) posAdj[i]+=a[i]; }
+  else if (isOpen)    { float a[]={-2,0,0,4,2,0};  for(int i=0;i<6;i++) posAdj[i]+=a[i]; }
+  else if (isClosed)  { float a[]={4,0,0,-3,0,0};  for(int i=0;i<6;i++) posAdj[i]+=a[i]; }
+  if (queensOn) { float a[]={0,4,4,0,0,0}; for(int i=0;i<6;i++) posAdj[i]+=a[i]; }
+  else          { float a[]={0,-4,-8,2,0,0}; for(int i=0;i<6;i++) posAdj[i]+=a[i]; }
+
+  pawnW += posAdj[0]; kingW += posAdj[1]; queenW += posAdj[2];
+  rookW += posAdj[3]; minorW += posAdj[4]; tempoW += posAdj[5];
+
+  pawnW  = fmaxf(0.0f,fminf(16.0f,pawnW));
+  kingW  = fmaxf(0.0f,fminf(16.0f,kingW));
+  queenW = fmaxf(0.0f,fminf(16.0f,queenW));
+  rookW  = fmaxf(0.0f,fminf(16.0f,rookW));
+  minorW = fmaxf(0.0f,fminf(16.0f,minorW));
+  tempoW = fmaxf(0.0f,fminf(16.0f,tempoW));
+
+  // === Pawn structure brain ===
+  float pawnMG = 0, pawnEG = 0;
+  const float ppMG[] = {0,0,10,17,30,55,85,0};
+  const float ppEG[] = {0,0,20,35,55,90,140,0};
+  for (int f = 0; f < 8; f++) {
+    if (wPF[f] > 0) {
+      if (wPF[f] > 1) { pawnMG -= C_FIGHTER_KNOBS[29]; pawnEG -= C_FIGHTER_KNOBS[30]; }
+      int hasN = (f>0 && wPF[f-1]>0) || (f<7 && wPF[f+1]>0);
+      if (!hasN) { pawnMG -= C_FIGHTER_KNOBS[31]; pawnEG -= C_FIGHTER_KNOBS[32]; }
+      int passed = 1;
+      for (int af=(f>0?f-1:0); af<=(f<7?f+1:f) && passed; af++)
+        if (bPF[af]>0 && bPR[af] > wPR[f]) passed = 0;
+      if (passed) { int ri=7-wPR[f]; if(ri>=0&&ri<8){pawnMG+=ppMG[ri];pawnEG+=ppEG[ri];}}
+      if (f>0 && wPF[f-1]>0) { int d=wPR[f]-wPR[f-1]; if(d>=-1&&d<=1){pawnMG+=C_FIGHTER_KNOBS[33];pawnEG+=C_FIGHTER_KNOBS[34];}}
+    }
+    if (bPF[f] > 0) {
+      if (bPF[f] > 1) { pawnMG += C_FIGHTER_KNOBS[29]; pawnEG += C_FIGHTER_KNOBS[30]; }
+      int hasN = (f>0 && bPF[f-1]>0) || (f<7 && bPF[f+1]>0);
+      if (!hasN) { pawnMG += C_FIGHTER_KNOBS[31]; pawnEG += C_FIGHTER_KNOBS[32]; }
+      int passed = 1;
+      for (int af=(f>0?f-1:0); af<=(f<7?f+1:f) && passed; af++)
+        if (wPF[af]>0 && wPR[af] < bPR[f]) passed = 0;
+      if (passed) { int ri=bPR[f]; if(ri>=0&&ri<8){pawnMG-=ppMG[ri];pawnEG-=ppEG[ri];}}
+      if (f>0 && bPF[f-1]>0) { int d=bPR[f]-bPR[f-1]; if(d>=-1&&d<=1){pawnMG-=C_FIGHTER_KNOBS[33];pawnEG-=C_FIGHTER_KNOBS[34];}}
+    }
+  }
+
+  // === King shield brain ===
+  float kingScore = 0;
+  if (kingW > 0) {
+    for (int side = 0; side < 2; side++) {
+      int kSq = side==0 ? wKSq : bKSq;
+      if (kSq < 0) continue;
+      int kr = kSq/8, kf = kSq%8;
+      int pdir = side==0 ? -1 : 1;
+      float shield = 0;
+      int attackCount = 0;
+      for (int dc=-1; dc<=1; dc++) {
+        int sf = kf+dc;
+        if (sf<0||sf>7) continue;
+        int sr = kr+pdir;
+        if (sr>=0 && sr<8) {
+          int pp = b->pieces[sr*8+sf];
+          if (pp && (pp&7)==PAWN && ((pp&8)==0)==(side==0)) shield += C_FIGHTER_KNOBS[35];
+          else shield -= C_FIGHTER_KNOBS[36];
+        }
+      }
+      for (int sq=0; sq<64; sq++) {
+        int pc = b->pieces[sq];
+        if (!pc) continue;
+        int isEnemy = ((pc&8)==0) != (side==0);
+        if (!isEnemy || (pc&7)==PAWN || (pc&7)==KING) continue;
+        int pr=sq/8, pf2=sq%8;
+        int dr=pr>kr?pr-kr:kr-pr, df=pf2>kf?pf2-kf:kf-pf2;
+        if (dr<=2 && df<=2) attackCount++;
+      }
+      float safetyMuls[] = {0,8,21,34,45,50};
+      int ac = attackCount > 5 ? 5 : attackCount;
+      float penalty = safetyMuls[ac] * (float)attackCount / 4.0f;
+      float total = shield - penalty;
+      kingScore += side==0 ? total : -total;
+    }
+  }
+
+  // === Rook brain ===
+  float rookScore = 0;
+  if (rookW > 0) {
+    for (int sq=0; sq<64; sq++) {
+      int pc = b->pieces[sq];
+      if (!pc || (pc&7)!=ROOK) continue;
+      int isW = (pc&8)==0;
+      int f = sq&7, r = sq/8;
+      float sign = isW ? 1.0f : -1.0f;
+      if (wPF[f]==0 && bPF[f]==0) rookScore += sign * C_FIGHTER_KNOBS[37];
+      else if (isW && wPF[f]==0) rookScore += C_FIGHTER_KNOBS[38];
+      else if (!isW && bPF[f]==0) rookScore -= C_FIGHTER_KNOBS[38];
+      if (isW && r==1) rookScore += C_FIGHTER_KNOBS[39];
+      if (!isW && r==6) rookScore -= C_FIGHTER_KNOBS[39];
+    }
+  }
+
+  // === Minor brain (bishop pair) ===
+  float minorScore = 0;
+  if (wBish>=2) minorScore += C_FIGHTER_KNOBS[40];
+  if (bBish>=2) minorScore -= C_FIGHTER_KNOBS[40];
+
+  // === Queen guard ===
+  float queenScore = 0;
+  if (queenW > 0 && ph > 6) {
+    for (int sq=0; sq<64; sq++) {
+      int pc = b->pieces[sq];
+      if (!pc || (pc&7)!=QUEEN) continue;
+      int isW = (pc&8)==0;
+      float sign = isW ? -1.0f : 1.0f;
+      int qr=sq/8, qf=sq%8;
+      int exposed = 0, mobility = 0;
+      for (int dr=-1; dr<=1; dr++) for (int dc=-1; dc<=1; dc++) {
+        if (!dr && !dc) continue;
+        int nr=qr+dr, nc=qf+dc;
+        if (nr>=0&&nr<8&&nc>=0&&nc<8) {
+          int t = b->pieces[nr*8+nc];
+          if (!t || ((t&8)==0)!=isW) mobility++;
+        }
+      }
+      int knightDirs[][2] = {{-2,-1},{-2,1},{-1,-2},{-1,2},{1,-2},{1,2},{2,-1},{2,1}};
+      for (int d=0; d<8; d++) {
+        int nr=qr+knightDirs[d][0], nc=qf+knightDirs[d][1];
+        if (nr>=0&&nr<8&&nc>=0&&nc<8) {
+          int t = b->pieces[nr*8+nc];
+          if (t && (t&7)==KNIGHT && ((t&8)==0)!=isW) exposed = 1;
+        }
+      }
+      if (exposed) queenScore += sign * C_FIGHTER_KNOBS[41];
+      if (mobility <= 2) queenScore += sign * C_FIGHTER_KNOBS[42];
+    }
+  }
+
+  // === Combine: PeSTO base + weighted brains ===
+  float totalMG = b->mgScore + pawnMG * pawnW / 8.0f;
+  float totalEG = b->egScore + pawnEG * pawnW / 8.0f;
+  float score = (totalMG * (float)ph + totalEG * (float)egPh) / 24.0f;
+
+  if (kingW > 0)  score += kingScore * kingW / 8.0f;
+  if (queenW > 0) score += queenScore * queenW / 8.0f;
+  if (rookW > 0)  score += rookScore * rookW / 8.0f;
+  if (minorW > 0) score += minorScore * minorW / 8.0f;
+  score += C_FIGHTER_KNOBS[43] * tempoW / 8.0f;
+
+  return b->side == 0 ? score : -score;
+}
+
+// ============================================================================
+// DEVICE: Fast PeSTO-only evaluation (for quiescence search inner nodes)
+// No brain scan — just tapered PeSTO from incremental scores.
+// ============================================================================
+
+__device__ float evalFast(Board* b) {
+  int ph = b->phase;
+  if (ph > 24) ph = 24;
+  if (ph < 0) ph = 0;
+  float tapered = (b->mgScore * (float)ph + b->egScore * (float)(24 - ph)) / 24.0f;
+  return b->side == 0 ? tapered : -tapered;
+}
+
+// ============================================================================
+// DEVICE: MVV-LVA move ordering — captures first, sorted by victim value
+// ============================================================================
+
+__device__ void orderMoves(Board* b, Move* moves, int count) {
+  // Score each move: captures get high scores (MVV-LVA), non-captures get 0
+  // Then insertion sort (stable, good for nearly-sorted)
+  int scores[MAX_MOVES];
+  for (int i = 0; i < count; i++) {
+    int captured = b->pieces[moves[i].to];
+    if (captured) {
+      int attacker = b->pieces[moves[i].from] & 7;
+      scores[i] = 1000000 + C_MVV_VAL[captured & 7] * 100 - C_MVV_VAL[attacker];
+    } else {
+      // Bonus for central destination squares
+      int tr = moves[i].to / 8, tc = moves[i].to % 8;
+      int centerDist = (tr > 3 ? tr - 3 : 3 - tr) + (tc > 3 ? tc - 3 : 3 - tc);
+      scores[i] = 100 - centerDist * 10;
+    }
+  }
+  for (int i = 1; i < count; i++) {
+    Move mv = moves[i]; int sc = scores[i];
+    int j = i - 1;
+    while (j >= 0 && scores[j] < sc) {
+      moves[j+1] = moves[j]; scores[j+1] = scores[j]; j--;
+    }
+    moves[j+1] = mv; scores[j+1] = sc;
+  }
+}
+
+// ============================================================================
+// DEVICE: Quiescence search — only captures, prevents horizon effect
+// ============================================================================
+
+__device__ float quiesce(Board* b, float alpha, float beta, int depth) {
+  float standPat = evalFast(b); // Fast PeSTO-only for quiescence speed
+  if (depth <= 0) return standPat;
+  if (standPat >= beta) return beta;
+  if (standPat > alpha) alpha = standPat;
+
+  // Delta pruning threshold: if we're way below alpha, skip
+  // (queen value = 900, so if standPat + 1000 < alpha, no capture helps)
+  if (standPat + 1100.0f < alpha) return alpha;
+
+  Move moves[MAX_MOVES];
+  int nMoves = generateMoves(b, moves);
+  orderMoves(b, moves, nMoves);
+
+  for (int i = 0; i < nMoves; i++) {
+    int captured = b->pieces[moves[i].to];
+    if (!captured) continue; // only search captures
+
+    // Delta pruning per move
+    int capVal = C_MVV_VAL[captured & 7];
+    if (standPat + (float)capVal + 200.0f < alpha) continue;
+
+    Board child = *b;
+    makeMove(&child, &moves[i]);
+    float score = -quiesce(&child, -beta, -alpha, depth - 1);
+    if (score >= beta) return beta;
+    if (score > alpha) alpha = score;
+  }
+  return alpha;
+}
+
+// ============================================================================
+// DEVICE: Negamax with alpha-beta pruning
+// ============================================================================
+
+__device__ float negamax(Board* b, int depth, float alpha, float beta) {
+  if (depth <= 0) return quiesce(b, alpha, beta, MAX_QUIESCE_DEPTH);
+
+  Move moves[MAX_MOVES];
+  int nMoves = generateMoves(b, moves);
+  if (nMoves == 0) {
+    return -90000.0f + (float)(DEFAULT_SEARCH_DEPTH - depth);
+  }
+
+  orderMoves(b, moves, nMoves);
+  float bestScore = -99999.0f;
+
+  for (int i = 0; i < nMoves; i++) {
+    Board child = *b;
+    makeMove(&child, &moves[i]);
+    float score = -negamax(&child, depth - 1, -beta, -alpha);
+    if (score > bestScore) bestScore = score;
+    if (score > alpha) alpha = score;
+    if (alpha >= beta) break; // beta cutoff
+  }
+  return bestScore;
+}
+
+// ============================================================================
+// KERNEL: Alpha-beta search — one thread per root move (root parallelism)
+// Each thread applies its assigned move and searches the resulting position.
+// ============================================================================
+
+__global__ void searchKernel(
+  Board* d_board,
+  Move* d_moves,
+  int numMoves,
+  float* d_scores,
+  int searchDepth
+) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= numMoves) return;
+
+  Board child = *d_board;
+  makeMove(&child, &d_moves[tid]);
+  // Search from opponent's perspective, negate for our score
+  d_scores[tid] = -negamax(&child, searchDepth - 1, -99999.0f, 99999.0f);
+}
+
+// ============================================================================
+// KERNEL: evalWithKnobs — static eval with personality knobs (for knob tuner)
+// Kept from v1 for the disagreement analysis / knob tuning step.
+// ============================================================================
+
+__global__ void evalWithKnobs(
+  Board* d_board, KnobConfig* d_configs, float* d_scores, int numConfigs
+) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= numConfigs) return;
+
+  Board board = *d_board;
+  float* k = d_configs[tid].knobs;
+
+  // Material (PeSTO base values, no PST for knob eval — matches v1 behavior)
+  float mg = 0, eg = 0;
+  int wBish = 0, bBish = 0, wQueens = 0, bQueens = 0;
+  int wPF[8]={}, bPF[8]={};
+  int wPR[8], bPR[8];
+  for (int i=0;i<8;i++){wPR[i]=7;bPR[i]=0;}
+  int wKSq = -1, bKSq = -1;
+  int pawnCount = 0, openFiles = 0;
+
+  int mgPV[7] = {0, 82, 337, 365, 477, 1025, 0};
+  int egPV[7] = {0, 94, 281, 297, 512, 936, 0};
+
+  for (int sq = 0; sq < 64; sq++) {
+    int pc = board.pieces[sq];
+    if (!pc) continue;
+    int type = pc & 7;
+    int isW = (pc & 8) == 0;
+    mg += isW ? mgPV[type] : -mgPV[type];
+    eg += isW ? egPV[type] : -egPV[type];
+    int f = sq & 7, r = sq / 8;
+    if (type==PAWN) {
+      pawnCount++;
+      if (isW) { wPF[f]++; if (r < wPR[f]) wPR[f] = r; }
+      else     { bPF[f]++; if (r > bPR[f]) bPR[f] = r; }
+    }
+    if (type==BISHOP) { if (isW) wBish++; else bBish++; }
+    if (type==QUEEN)  { if (isW) wQueens++; else bQueens++; }
+    if (type==KING)   { if (isW) wKSq=sq; else bKSq=sq; }
+  }
+  for (int f=0;f<8;f++) if (wPF[f]==0 && bPF[f]==0) openFiles++;
+
+  int phase = board.phase > 24 ? 24 : board.phase;
+  int egPh = 24 - phase;
+
+  // Pawn brain
+  float pawnMG = 0, pawnEG = 0;
+  const float ppMG[] = {0,0,10,17,30,55,85,0};
+  const float ppEG[] = {0,0,20,35,55,90,140,0};
+  for (int f = 0; f < 8; f++) {
+    if (wPF[f] > 0) {
+      if (wPF[f] > 1) { pawnMG -= k[29]; pawnEG -= k[30]; }
+      int hasN = (f>0 && wPF[f-1]>0) || (f<7 && wPF[f+1]>0);
+      if (!hasN) { pawnMG -= k[31]; pawnEG -= k[32]; }
+      int passed = 1;
+      for (int af = (f>0?f-1:0); af <= (f<7?f+1:f) && passed; af++)
+        if (bPF[af]>0 && bPR[af] > wPR[f]) passed = 0;
+      if (passed) { int ri = 7 - wPR[f]; if (ri>=0&&ri<8) { pawnMG += ppMG[ri]; pawnEG += ppEG[ri]; } }
+      if (f>0 && wPF[f-1]>0) { int d = wPR[f]-wPR[f-1]; if (d>=-1&&d<=1) { pawnMG += k[33]; pawnEG += k[34]; } }
+    }
+    if (bPF[f] > 0) {
+      if (bPF[f] > 1) { pawnMG += k[29]; pawnEG += k[30]; }
+      int hasN = (f>0 && bPF[f-1]>0) || (f<7 && bPF[f+1]>0);
+      if (!hasN) { pawnMG += k[31]; pawnEG += k[32]; }
+      int passed = 1;
+      for (int af = (f>0?f-1:0); af <= (f<7?f+1:f) && passed; af++)
+        if (wPF[af]>0 && wPR[af] < bPR[f]) passed = 0;
+      if (passed) { int ri = bPR[f]; if (ri>=0&&ri<8) { pawnMG -= ppMG[ri]; pawnEG -= ppEG[ri]; } }
+      if (f>0 && bPF[f-1]>0) { int d = bPR[f]-bPR[f-1]; if (d>=-1&&d<=1) { pawnMG -= k[33]; pawnEG -= k[34]; } }
+    }
+  }
+
+  // King shield brain
+  float kingScore = 0;
+  for (int side = 0; side < 2; side++) {
+    int kSq = side==0 ? wKSq : bKSq;
+    if (kSq < 0) continue;
+    int kr = kSq/8, kf = kSq%8;
+    int pdir = side==0 ? -1 : 1;
+    float shield = 0;
+    int attackCount = 0;
+    for (int dc=-1; dc<=1; dc++) {
+      int sf = kf+dc;
+      if (sf<0||sf>7) continue;
+      int sr = kr+pdir;
+      if (sr>=0 && sr<8) {
+        int pp = board.pieces[sr*8+sf];
+        if (pp && (pp&7)==PAWN && ((pp&8)==0)==(side==0)) shield += k[35];
+        else shield -= k[36];
+      }
+    }
+    for (int sq=0; sq<64; sq++) {
+      int pc = board.pieces[sq];
+      if (!pc) continue;
+      int isEnemy = ((pc&8)==0) != (side==0);
+      if (!isEnemy || (pc&7)==PAWN || (pc&7)==KING) continue;
+      int pr=sq/8, pf2=sq%8;
+      int dr=pr>kr?pr-kr:kr-pr, df=pf2>kf?pf2-kf:kf-pf2;
+      if (dr<=2 && df<=2) attackCount++;
+    }
+    float safetyMuls[] = {0,8,21,34,45,50};
+    int ac = attackCount > 5 ? 5 : attackCount;
+    float penalty = safetyMuls[ac] * attackCount / 4.0f;
+    float total = shield - penalty;
+    kingScore += side==0 ? total : -total;
+  }
+
+  // Rook brain
+  float rookScore = 0;
+  for (int sq=0; sq<64; sq++) {
+    int pc = board.pieces[sq];
+    if (!pc || (pc&7)!=ROOK) continue;
+    int isW = (pc&8)==0;
+    int f = sq&7, r = sq/8;
+    float sign = isW ? 1.0f : -1.0f;
+    if (wPF[f]==0 && bPF[f]==0) rookScore += sign * k[37];
+    else if (isW && wPF[f]==0) rookScore += k[38];
+    else if (!isW && bPF[f]==0) rookScore -= k[38];
+    if (isW && r==1) rookScore += k[39];
+    if (!isW && r==6) rookScore -= k[39];
+  }
+
+  // Minor brain (bishop pair)
+  float minorScore = 0;
+  if (wBish>=2) minorScore += k[40];
+  if (bBish>=2) minorScore -= k[40];
+
+  // Queen guard
+  float queenScore = 0;
+  if (phase > 6) {
+    for (int sq=0; sq<64; sq++) {
+      int pc = board.pieces[sq];
+      if (!pc || (pc&7)!=QUEEN) continue;
+      int isW = (pc&8)==0;
+      float sign = isW ? -1.0f : 1.0f;
+      int qr=sq/8, qf=sq%8;
+      int exposed = 0, mobility = 0;
+      for (int dr=-1; dr<=1; dr++) for (int dc=-1; dc<=1; dc++) {
+        if (!dr && !dc) continue;
+        int nr=qr+dr, nc=qf+dc;
+        if (nr>=0&&nr<8&&nc>=0&&nc<8) {
+          int t = board.pieces[nr*8+nc];
+          if (!t || ((t&8)==0)!=isW) mobility++;
+        }
+      }
+      int knightDirs[][2] = {{-2,-1},{-2,1},{-1,-2},{-1,2},{1,-2},{1,2},{2,-1},{2,1}};
+      for (int d=0; d<8; d++) {
+        int nr=qr+knightDirs[d][0], nc=qf+knightDirs[d][1];
+        if (nr>=0&&nr<8&&nc>=0&&nc<8) {
+          int t = board.pieces[nr*8+nc];
+          if (t && (t&7)==KNIGHT && ((t&8)==0)!=isW) exposed = 1;
+        }
+      }
+      if (exposed) queenScore += sign * k[41];
+      if (mobility <= 2) queenScore += sign * k[42];
+    }
+  }
+
+  // Position classification
+  int isOpening = phase >= 20;
+  int isEndgame = phase < 8;
+  int isOpen = openFiles >= 4;
+  int isClosed = openFiles <= 2 && pawnCount >= 10;
+  int queensOn = wQueens > 0 && bQueens > 0;
+
+  // Layer weight selection
+  float pawnW = k[0], kingW = k[1], queenW = k[2], rookW = k[3], minorW = k[4], tempoW = k[5];
+  float agg = k[24];
+  tempoW += (agg - 8) * 0.5f;
+  kingW  -= (agg - 8) * 0.25f;
+  pawnW  -= (agg - 8) * 0.25f;
+
+  float posAdj[6] = {0,0,0,0,0,0};
+  if (isOpening)      { float a[]={-2,4,2,-4,0,2}; for(int i=0;i<6;i++) posAdj[i]+=a[i]; }
+  else if (isEndgame) { float a[]={4,-4,-4,4,0,2}; for(int i=0;i<6;i++) posAdj[i]+=a[i]; }
+  else if (isOpen)    { float a[]={-2,0,0,4,2,0};  for(int i=0;i<6;i++) posAdj[i]+=a[i]; }
+  else if (isClosed)  { float a[]={4,0,0,-3,0,0};  for(int i=0;i<6;i++) posAdj[i]+=a[i]; }
+  if (queensOn) { float a[]={0,4,4,0,0,0}; for(int i=0;i<6;i++) posAdj[i]+=a[i]; }
+  else          { float a[]={0,-4,-8,2,0,0}; for(int i=0;i<6;i++) posAdj[i]+=a[i]; }
+
+  pawnW += posAdj[0]; kingW += posAdj[1]; queenW += posAdj[2];
+  rookW += posAdj[3]; minorW += posAdj[4]; tempoW += posAdj[5];
+
+  pawnW  = fmaxf(0,fminf(16,pawnW));
+  kingW  = fmaxf(0,fminf(16,kingW));
+  queenW = fmaxf(0,fminf(16,queenW));
+  rookW  = fmaxf(0,fminf(16,rookW));
+  minorW = fmaxf(0,fminf(16,minorW));
+  tempoW = fmaxf(0,fminf(16,tempoW));
+
+  // Combine
+  float totalMG = mg + pawnMG * pawnW / 8.0f;
+  float totalEG = eg + pawnEG * pawnW / 8.0f;
+  float score = (totalMG * phase + totalEG * egPh) / 24.0f;
+  if (kingW > 0)  score += kingScore * kingW / 8.0f;
+  if (queenW > 0) score += queenScore * queenW / 8.0f;
+  if (rookW > 0)  score += rookScore * rookW / 8.0f;
+  if (minorW > 0) score += minorScore * minorW / 8.0f;
+  score += k[43] * tempoW / 8.0f;
+
+  d_scores[tid] = board.side == 0 ? score : -score;
+}
+
+__global__ void genConfigs(KnobConfig* d_configs, float* d_defaults, int n, unsigned long long seed) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= n) return;
+  curandState rng;
+  curand_init(seed, tid, 0, &rng);
+  for (int k = 0; k < KNOB_COUNT; k++) {
+    float base = d_defaults[k];
+    float range = base * 0.4f + 3.0f;
+    d_configs[tid].knobs[k] = fmaxf(0.0f, base + (curand_uniform(&rng)*2.0f-1.0f)*range);
+  }
+}
+
+// ============================================================================
+// HOST: Main — process batch of positions
+// ============================================================================
+
+int main(int argc, char** argv) {
+  int numConfigs = 4096;
+  int mctsSimsPerMove = 500;
+  int searchDepth = DEFAULT_SEARCH_DEPTH;
+  int positional = 0;
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--fighter-blob") == 0) { i++; continue; }
+    if (strcmp(argv[i], "--depth") == 0 && i + 1 < argc) {
+      searchDepth = atoi(argv[++i]);
+      if (searchDepth < 1) searchDepth = 1;
+      if (searchDepth > 12) searchDepth = 12;
+      continue;
+    }
+    if (argv[i][0] == '-') continue;
+    if (positional == 0) numConfigs = atoi(argv[i]);
+    else if (positional == 1) mctsSimsPerMove = atoi(argv[i]);
+    positional++;
+  }
+
+  // Set CUDA stack size for recursive alpha-beta search
+  // Each recursion level uses ~4KB (Board + Move array + locals)
+  // Depth 5 + quiesce 6 = 11 levels × 4KB = 44KB needed
+  cudaDeviceSetLimit(cudaLimitStackSize, 65536);
+
+  float defaults[KNOB_COUNT] = DOJO_ACTIVE_FIGHTER_DEFAULTS44_INITIALIZER;
+  const char* fighterBlobPath = resolveFighterBlobPath(argc, argv);
+  if (fighterBlobPath && *fighterBlobPath) {
+    if (!loadLegacyDefaultsFromBlob(fighterBlobPath, defaults, KNOB_COUNT)) {
+      fprintf(stderr, "[dojo] warning: failed to load fighter blob %s, using compiled defaults\n", fighterBlobPath);
+    } else {
+      fprintf(stderr, "[dojo] loaded fighter blob %s\n", fighterBlobPath);
+    }
+  }
+  fprintf(stderr, "[dojo] search depth: %d\n", searchDepth);
+
+  // Upload fighter knobs to constant memory for search evaluation
+  cudaMemcpyToSymbol(C_FIGHTER_KNOBS, defaults, KNOB_COUNT * sizeof(float));
+
+  // Allocate GPU memory
+  Board *d_board; cudaMalloc(&d_board, sizeof(Board));
+  KnobConfig *d_configs; cudaMalloc(&d_configs, numConfigs * sizeof(KnobConfig));
+  float *d_scoresA, *d_scoresB, *d_defaults;
+  cudaMalloc(&d_scoresA, numConfigs * sizeof(float));
+  cudaMalloc(&d_scoresB, numConfigs * sizeof(float));
+  cudaMalloc(&d_defaults, KNOB_COUNT * sizeof(float));
+  cudaMemcpy(d_defaults, defaults, KNOB_COUNT * sizeof(float), cudaMemcpyHostToDevice);
+
+  // MCTS memory (kept for knob tuner fallback)
+  Move *d_moves; cudaMalloc(&d_moves, MAX_MOVES * sizeof(Move));
+  float *d_winRates; cudaMalloc(&d_winRates, MAX_MOVES * sizeof(float));
+  int *d_visits; cudaMalloc(&d_visits, MAX_MOVES * sizeof(int));
+
+  // Search memory
+  float *d_searchScores; cudaMalloc(&d_searchScores, MAX_MOVES * sizeof(float));
+
+  // Generate knob configs on GPU (for knob tuner step)
+  int blocks = (numConfigs + BLOCK_SIZE - 1) / BLOCK_SIZE;
+  genConfigs<<<blocks, BLOCK_SIZE>>>(d_configs, d_defaults, numConfigs, time(NULL));
+  cudaDeviceSynchronize();
+
+  // Host buffers
+  float *h_scoresA = (float*)malloc(numConfigs * sizeof(float));
+  float *h_scoresB = (float*)malloc(numConfigs * sizeof(float));
+  float *h_searchScores = (float*)malloc(MAX_MOVES * sizeof(float));
+  KnobConfig *h_configs = (KnobConfig*)malloc(numConfigs * sizeof(KnobConfig));
+  cudaMemcpy(h_configs, d_configs, numConfigs * sizeof(KnobConfig), cudaMemcpyDeviceToHost);
+
+  // Accumulate best knobs
+  float bestKnobs[KNOB_COUNT];
+  memcpy(bestKnobs, defaults, sizeof(defaults));
+  int totalPos = 0, totalFixable = 0, totalUnfixable = 0;
+  int inputLines = 0, parsedLines = 0, comparablePositions = 0, agreements = 0;
+  int skippedShort = 0, skippedNoTab = 0, skippedNoMoves = 0, skippedEngineMoveMissing = 0;
+
+  char line[512];
+  struct timespec start, now;
+  clock_gettime(CLOCK_MONOTONIC, &start);
+
+  printf("{\"positions\":[\n");
+  int first = 1;
+
+  while (fgets(line, sizeof(line), stdin)) {
+    inputLines++;
+    line[strcspn(line, "\n")] = 0;
+    if (strlen(line) < 10) { skippedShort++; continue; }
+
+    // Parse: FEN<tab>engine_move[<tab>legal1,legal2,...]
+    char* tab1 = strchr(line, '\t');
+    if (!tab1) { skippedNoTab++; continue; }
+    *tab1 = 0;
+    char* fen = line;
+    char* engineMove = tab1 + 1;
+    char* tab2 = strchr(engineMove, '\t');
+    char* legalMovesText = NULL;
+    if (tab2) {
+      *tab2 = 0;
+      legalMovesText = tab2 + 1;
+      legalMovesText = ltrim(legalMovesText);
+      rtrimInPlace(legalMovesText);
+      if (*legalMovesText == 0) legalMovesText = NULL;
+    }
+    engineMove = ltrim(engineMove);
+    rtrimInPlace(engineMove);
+    parsedLines++;
+
+    Board board;
+    parseFen(fen, &board);
+    cudaMemcpy(d_board, &board, sizeof(Board), cudaMemcpyHostToDevice);
+
+    // Build legal move list
+    Move h_moves[MAX_MOVES];
+    int numMoves = 0;
+    if (legalMovesText) {
+      numMoves = parseLegalMoveList(legalMovesText, h_moves, MAX_MOVES);
+    }
+    if (numMoves == 0) {
+      // Generate pseudo-legal moves on host as fallback
+      int side = board.side;
+      int friendly = side ? BLACK_FLAG : WHITE_FLAG;
+      int enemy = side ? WHITE_FLAG : BLACK_FLAG;
+      for (int sq = 0; sq < 64 && numMoves < MAX_MOVES-4; sq++) {
+        int pc = board.pieces[sq];
+        if (!pc || (pc & 8) != friendly) continue;
+        int type = pc & 7, r = sq/8, c = sq%8;
+        if (type == PAWN) {
+          int dir = (friendly==WHITE_FLAG) ? -1 : 1;
+          int nr = r+dir;
+          if (nr>=0 && nr<8 && !board.pieces[nr*8+c]) {
+            h_moves[numMoves++] = {sq, nr*8+c, 0};
+            int startRank = (friendly==WHITE_FLAG) ? 6 : 1;
+            if (r == startRank) {
+              int nr2 = r+dir*2;
+              if (!board.pieces[nr2*8+c]) h_moves[numMoves++] = {sq, nr2*8+c, 0};
+            }
+          }
+          for (int dc=-1; dc<=1; dc+=2) {
+            int nc=c+dc;
+            if (nr>=0&&nr<8&&nc>=0&&nc<8) {
+              int t=board.pieces[nr*8+nc];
+              if (t&&(t&8)!=friendly) h_moves[numMoves++]={sq,nr*8+nc,0};
+            }
+          }
+        } else if (type == KNIGHT) {
+          int kd[][2]={{-2,-1},{-2,1},{-1,-2},{-1,2},{1,-2},{1,2},{2,-1},{2,1}};
+          for (int d=0;d<8;d++){int nr=r+kd[d][0],nc=c+kd[d][1];if(nr>=0&&nr<8&&nc>=0&&nc<8){int t=board.pieces[nr*8+nc];if(!t||(t&8)!=friendly)h_moves[numMoves++]={sq,nr*8+nc,0};}}
+        } else if (type == KING) {
+          for(int dr=-1;dr<=1;dr++)for(int dc=-1;dc<=1;dc++){if(!dr&&!dc)continue;int nr=r+dr,nc=c+dc;if(nr>=0&&nr<8&&nc>=0&&nc<8){int t=board.pieces[nr*8+nc];if(!t||(t&8)!=friendly)h_moves[numMoves++]={sq,nr*8+nc,0};}}
+        } else {
+          int dirs[8][2]={{-1,-1},{-1,0},{-1,1},{0,-1},{0,1},{1,-1},{1,0},{1,1}};
+          for(int d=0;d<8;d++){
+            int isDiag=(dirs[d][0]!=0&&dirs[d][1]!=0);
+            if(type==BISHOP&&!isDiag)continue;
+            if(type==ROOK&&isDiag)continue;
+            int nr=r+dirs[d][0],nc=c+dirs[d][1];
+            while(nr>=0&&nr<8&&nc>=0&&nc<8){int t=board.pieces[nr*8+nc];if(!t)h_moves[numMoves++]={sq,nr*8+nc,0};else{if((t&8)!=friendly)h_moves[numMoves++]={sq,nr*8+nc,0};break;}nr+=dirs[d][0];nc+=dirs[d][1];}
+          }
+        }
+      }
+    }
+
+    if (numMoves == 0) { skippedNoMoves++; continue; }
+
+    // Find engine move index
+    int engIdx = -1;
+    for (int i = 0; i < numMoves; i++) {
+      char mv[8];
+      snprintf(mv, 8, "%c%d%c%d", 'a'+(h_moves[i].from%8), 8-(h_moves[i].from/8), 'a'+(h_moves[i].to%8), 8-(h_moves[i].to/8));
+      if (strcmp(mv, engineMove) == 0) { engIdx = i; break; }
+    }
+    if (engIdx < 0) { skippedEngineMoveMissing++; continue; }
+
+    // ================================================================
+    // STEP 1: GPU Alpha-Beta Search — find best move
+    // One thread per legal move, each searches its subtree
+    // ================================================================
+    cudaMemcpy(d_moves, h_moves, numMoves * sizeof(Move), cudaMemcpyHostToDevice);
+
+    int searchBlocks = (numMoves + 31) / 32; // one warp minimum
+    searchKernel<<<searchBlocks, 32>>>(d_board, d_moves, numMoves, d_searchScores, searchDepth);
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(h_searchScores, d_searchScores, numMoves * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // Find best move by search score
+    int bestIdx = 0; float bestScore = -99999.0f;
+    for (int i = 0; i < numMoves; i++) {
+      if (h_searchScores[i] > bestScore) {
+        bestScore = h_searchScores[i];
+        bestIdx = i;
+      }
+    }
+
+    // Convert search best move to UCI
+    char searchMove[8];
+    snprintf(searchMove, 8, "%c%d%c%d",
+      'a'+(h_moves[bestIdx].from%8), 8-(h_moves[bestIdx].from/8),
+      'a'+(h_moves[bestIdx].to%8), 8-(h_moves[bestIdx].to/8));
+
+    comparablePositions++;
+
+    // Check agreement
+    if (strcmp(searchMove, engineMove) == 0) { agreements++; continue; }
+
+    totalPos++;
+
+    // ================================================================
+    // STEP 2: Knob tuner — which configs prefer the search move?
+    // (kept from v1 for training signal extraction)
+    // ================================================================
+    Board boardA = board, boardB = board;
+    boardA.pieces[h_moves[engIdx].to] = boardA.pieces[h_moves[engIdx].from];
+    boardA.pieces[h_moves[engIdx].from] = EMPTY;
+    boardA.side = 1-boardA.side;
+    boardB.pieces[h_moves[bestIdx].to] = boardB.pieces[h_moves[bestIdx].from];
+    boardB.pieces[h_moves[bestIdx].from] = EMPTY;
+    boardB.side = 1-boardB.side;
+
+    Board *d_bA, *d_bB;
+    cudaMalloc(&d_bA, sizeof(Board)); cudaMalloc(&d_bB, sizeof(Board));
+    cudaMemcpy(d_bA, &boardA, sizeof(Board), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_bB, &boardB, sizeof(Board), cudaMemcpyHostToDevice);
+
+    evalWithKnobs<<<blocks, BLOCK_SIZE>>>(d_bA, d_configs, d_scoresA, numConfigs);
+    evalWithKnobs<<<blocks, BLOCK_SIZE>>>(d_bB, d_configs, d_scoresB, numConfigs);
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(h_scoresA, d_scoresA, numConfigs*sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_scoresB, d_scoresB, numConfigs*sizeof(float), cudaMemcpyDeviceToHost);
+
+    int fixable = 0;
+    int bestCfg = -1; float bestDelta = -99999;
+    for (int i = 0; i < numConfigs; i++) {
+      float delta = h_scoresB[i] - h_scoresA[i];
+      if (delta > 0) { fixable++; if (delta > bestDelta) { bestDelta = delta; bestCfg = i; } }
+    }
+
+    if (fixable > 0) totalFixable++; else totalUnfixable++;
+
+    if (bestCfg >= 0) {
+      for (int k = 0; k < KNOB_COUNT; k++)
+        bestKnobs[k] = bestKnobs[k] * 0.95f + h_configs[bestCfg].knobs[k] * 0.05f;
+    }
+
+    if (!first) printf(",\n");
+    first = 0;
+    printf("{\"fen\":\"%s\",\"engine\":\"%s\",\"mcts\":\"%s\",\"mcts_wr\":%.3f,\"fixable\":%d,\"rate\":%.3f}",
+      fen, engineMove, searchMove, bestScore / 100.0f, fixable, (float)fixable/numConfigs);
+
+    cudaFree(d_bA); cudaFree(d_bB);
+  }
+
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  double elapsed = (now.tv_sec - start.tv_sec) + (now.tv_nsec - start.tv_nsec) / 1e9;
+
+  printf("\n],\"summary\":{");
+  const int disagreements = totalPos;
+  const float agreementRate = comparablePositions > 0 ? (float)agreements / comparablePositions : 0.0f;
+  const float disagreementRate = comparablePositions > 0 ? (float)disagreements / comparablePositions : 0.0f;
+  const float coverage = parsedLines > 0 ? (float)comparablePositions / parsedLines : 0.0f;
+  printf("\"inputLines\":%d,\"parsedLines\":%d,", inputLines, parsedLines);
+  printf("\"comparablePositions\":%d,\"agreements\":%d,\"disagreements\":%d,", comparablePositions, agreements, disagreements);
+  printf("\"agreementRate\":%.3f,\"disagreementRate\":%.3f,\"coverage\":%.3f,", agreementRate, disagreementRate, coverage);
+  printf("\"skippedShort\":%d,\"skippedNoTab\":%d,\"skippedNoMoves\":%d,\"skippedEngineMoveMissing\":%d,",
+    skippedShort, skippedNoTab, skippedNoMoves, skippedEngineMoveMissing);
+  printf("\"positions\":%d,\"fixable\":%d,\"unfixable\":%d,\"fixRate\":%.3f,",
+    totalPos, totalFixable, totalUnfixable, totalPos>0?(float)totalFixable/totalPos:0);
+  printf("\"elapsed\":%.2f,\"posPerSec\":%.1f,", elapsed, totalPos > 0 ? totalPos/elapsed : 0.0);
+  printf("\"searchDepth\":%d,", searchDepth);
+  printf("\"verdict\":\"%s\",",
+    totalPos==0 ? (agreements > 0 ? "ALL_AGREE" : "NO_DATA") :
+    totalFixable*100/totalPos >= 70 ? "ARCHITECTURE_FINE" :
+    totalFixable*100/totalPos >= 40 ? "PARTIAL" : "NEEDS_WORK");
+  printf("\"bestKnobs\":{");
+  const char* names[] = {
+    "layer0_pawn","layer0_king","layer0_queen","layer0_rook","layer0_minor","layer0_tempo",
+    "layer1_pawn","layer1_king","layer1_queen","layer1_rook","layer1_minor","layer1_tempo",
+    "layer2_pawn","layer2_king","layer2_queen","layer2_rook","layer2_minor","layer2_tempo",
+    "layer3_pawn","layer3_king","layer3_queen","layer3_rook","layer3_minor","layer3_tempo",
+    "aggression0","aggression1","aggression2","aggression3",
+    "layerBleed",
+    "doubledPawnMG","doubledPawnEG","isolatedPawnMG","isolatedPawnEG","connectedPawnMG","connectedPawnEG",
+    "shieldBonus","shieldHole",
+    "rookOpenFile","rookSemiOpen","rook7th",
+    "bishopPair",
+    "queenExposed","queenTrapped",
+    "tempo"
+  };
+  for (int k = 0; k < KNOB_COUNT; k++) { if (k) printf(","); printf("\"%s\":%.1f", names[k], bestKnobs[k]); }
+  printf("}}}\n");
+
+  // Cleanup
+  cudaFree(d_board); cudaFree(d_configs); cudaFree(d_scoresA); cudaFree(d_scoresB);
+  cudaFree(d_defaults); cudaFree(d_moves); cudaFree(d_winRates); cudaFree(d_visits);
+  cudaFree(d_searchScores);
+  free(h_scoresA); free(h_scoresB); free(h_searchScores); free(h_configs);
+  return 0;
+}

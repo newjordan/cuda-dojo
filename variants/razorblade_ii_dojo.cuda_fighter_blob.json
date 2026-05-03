@@ -1,0 +1,641 @@
+{
+  "$schema": "../schemas/dojo_cuda_fighter_blob.schema.json",
+  "schemaVersion": "dojo.cuda_fighter_blob.v1",
+  "abiVersion": "dojo.cuda.abi.v1",
+  "sourceIr": "/workspace/.docker_labs/dojo_conversion_lab/variants/razorblade_ii_dojo.fighter_ir.json",
+  "hashes": {
+    "irSha256": "dee01d5ce4b1d4349f79ffcb9ae103c1a9539da8a9e315501e36f93fc852997f",
+    "sourceSha256": "dbae1bfe1bd3e3aaa2582710c610902056a9e5d38f5d5fb7f11ee3ead6b58137",
+    "artifactSha256": "961ec31ff68843c72901712380d7363493fc50d701ca644e82e819e2e52cdcef"
+  },
+  "fighter": {
+    "slug": "razorblade_ii_dojo",
+    "temperament": "aggressive",
+    "surfaceCount": 7,
+    "knobCount": 22
+  },
+  "calibration": {
+    "$schema": "../schemas/calibration_profile.schema.json",
+    "generatedAt": "2026-04-14T02:36:51.014Z",
+    "sourceVariant": "razorblade_ii_dojo.src.js",
+    "artifactVariant": "razorblade_ii_dojo.js",
+    "fighter": "razorblade_ii_dojo.src.js",
+    "originalInput": "/workspace/.docker_labs/dojo_conversion_lab/variants/razorblade_ii.js",
+    "schemaVersion": "dojo.calibration.v1",
+    "generatedFrom": "foreign-conversion",
+    "summary": {
+      "knobCount": 22,
+      "surfaceCount": 7
+    },
+    "temperament": {
+      "primary": "aggressive",
+      "scores": {
+        "aggressive": 80,
+        "defensive": 6,
+        "balanced": 18,
+        "opportunistic": 8
+      }
+    },
+    "categoryWeights": {
+      "aggression": 0,
+      "defense": 0,
+      "search": 1,
+      "time": 0,
+      "temperature": 0,
+      "adaptation": 0,
+      "knowledge": 0,
+      "balance": 0
+    },
+    "bands": {
+      "heat": {
+        "value": 34,
+        "label": "cool",
+        "description": "willingness to widen or gamble",
+        "sourceCategories": [
+          "temperature",
+          "aggression"
+        ]
+      },
+      "stability": {
+        "value": 19,
+        "label": "fragile",
+        "description": "resistance to drift and collapse",
+        "sourceCategories": [
+          "defense",
+          "time"
+        ]
+      },
+      "timePosture": {
+        "value": 25,
+        "label": "saver",
+        "description": "spender vs saver clock posture",
+        "sourceCategories": [
+          "time"
+        ]
+      },
+      "searchPosture": {
+        "value": 54,
+        "label": "balanced",
+        "description": "narrow/deep vs wide/speculative search stance",
+        "sourceCategories": [
+          "search",
+          "temperature"
+        ]
+      },
+      "tacticalOpportunism": {
+        "value": 23,
+        "label": "alert",
+        "description": "speed of jumping on chaos or tactical chances",
+        "sourceCategories": [
+          "aggression",
+          "adaptation"
+        ]
+      },
+      "recoveryDiscipline": {
+        "value": 21,
+        "label": "loose",
+        "description": "ability to recover after a failed swing",
+        "sourceCategories": [
+          "defense",
+          "adaptation"
+        ]
+      },
+      "knowledgeReliance": {
+        "value": 0,
+        "label": "improvised",
+        "description": "dependence on books, priors, and lookup",
+        "sourceCategories": [
+          "knowledge"
+        ]
+      },
+      "endgameDiscipline": {
+        "value": 25,
+        "label": "loose",
+        "description": "conversion vs speculation in late play",
+        "sourceCategories": [
+          "defense",
+          "time",
+          "knowledge"
+        ]
+      }
+    }
+  },
+  "surfaces": [
+    {
+      "name": "MAX_DEPTH",
+      "symbolName": "RAZORBLADE_II_DOJO__MAX_DEPTH",
+      "offset": 0,
+      "count": 1
+    },
+    {
+      "name": "PHASE_WEIGHTS",
+      "symbolName": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS",
+      "offset": 1,
+      "count": 7
+    },
+    {
+      "name": "TOTAL_PHASE",
+      "symbolName": "RAZORBLADE_II_DOJO__TOTAL_PHASE",
+      "offset": 8,
+      "count": 1
+    },
+    {
+      "name": "FUTILITY_MARGIN",
+      "symbolName": "RAZORBLADE_II_DOJO__FUTILITY_MARGIN",
+      "offset": 9,
+      "count": 4
+    },
+    {
+      "name": "LMP_THRESHOLD",
+      "symbolName": "RAZORBLADE_II_DOJO__LMP_THRESHOLD",
+      "offset": 13,
+      "count": 5
+    },
+    {
+      "name": "RAZOR_MARGIN",
+      "symbolName": "RAZORBLADE_II_DOJO__RAZOR_MARGIN",
+      "offset": 18,
+      "count": 3
+    },
+    {
+      "name": "ASP_WINDOW",
+      "symbolName": "RAZORBLADE_II_DOJO__ASP_WINDOW",
+      "offset": 21,
+      "count": 1
+    }
+  ],
+  "knobTable": [
+    {
+      "index": 0,
+      "surface": "RAZORBLADE_II_DOJO__MAX_DEPTH",
+      "surfaceName": "MAX_DEPTH",
+      "path": null,
+      "fullPath": "RAZORBLADE_II_DOJO__MAX_DEPTH",
+      "alias": "RAZORBLADE_II_DOJO__MAX_DEPTH",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 64
+    },
+    {
+      "index": 1,
+      "surface": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS",
+      "surfaceName": "PHASE_WEIGHTS",
+      "path": "[0]",
+      "fullPath": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[0]",
+      "alias": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[0]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 0
+    },
+    {
+      "index": 2,
+      "surface": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS",
+      "surfaceName": "PHASE_WEIGHTS",
+      "path": "[1]",
+      "fullPath": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[1]",
+      "alias": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[1]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 0
+    },
+    {
+      "index": 3,
+      "surface": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS",
+      "surfaceName": "PHASE_WEIGHTS",
+      "path": "[2]",
+      "fullPath": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[2]",
+      "alias": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[2]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 1
+    },
+    {
+      "index": 4,
+      "surface": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS",
+      "surfaceName": "PHASE_WEIGHTS",
+      "path": "[3]",
+      "fullPath": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[3]",
+      "alias": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[3]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 1
+    },
+    {
+      "index": 5,
+      "surface": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS",
+      "surfaceName": "PHASE_WEIGHTS",
+      "path": "[4]",
+      "fullPath": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[4]",
+      "alias": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[4]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 2
+    },
+    {
+      "index": 6,
+      "surface": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS",
+      "surfaceName": "PHASE_WEIGHTS",
+      "path": "[5]",
+      "fullPath": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[5]",
+      "alias": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[5]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 4
+    },
+    {
+      "index": 7,
+      "surface": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS",
+      "surfaceName": "PHASE_WEIGHTS",
+      "path": "[6]",
+      "fullPath": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[6]",
+      "alias": "RAZORBLADE_II_DOJO__PHASE_WEIGHTS.[6]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 0
+    },
+    {
+      "index": 8,
+      "surface": "RAZORBLADE_II_DOJO__TOTAL_PHASE",
+      "surfaceName": "TOTAL_PHASE",
+      "path": null,
+      "fullPath": "RAZORBLADE_II_DOJO__TOTAL_PHASE",
+      "alias": "RAZORBLADE_II_DOJO__TOTAL_PHASE",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 24
+    },
+    {
+      "index": 9,
+      "surface": "RAZORBLADE_II_DOJO__FUTILITY_MARGIN",
+      "surfaceName": "FUTILITY_MARGIN",
+      "path": "[0]",
+      "fullPath": "RAZORBLADE_II_DOJO__FUTILITY_MARGIN.[0]",
+      "alias": "RAZORBLADE_II_DOJO__FUTILITY_MARGIN.[0]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 0
+    },
+    {
+      "index": 10,
+      "surface": "RAZORBLADE_II_DOJO__FUTILITY_MARGIN",
+      "surfaceName": "FUTILITY_MARGIN",
+      "path": "[1]",
+      "fullPath": "RAZORBLADE_II_DOJO__FUTILITY_MARGIN.[1]",
+      "alias": "RAZORBLADE_II_DOJO__FUTILITY_MARGIN.[1]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 180
+    },
+    {
+      "index": 11,
+      "surface": "RAZORBLADE_II_DOJO__FUTILITY_MARGIN",
+      "surfaceName": "FUTILITY_MARGIN",
+      "path": "[2]",
+      "fullPath": "RAZORBLADE_II_DOJO__FUTILITY_MARGIN.[2]",
+      "alias": "RAZORBLADE_II_DOJO__FUTILITY_MARGIN.[2]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 400
+    },
+    {
+      "index": 12,
+      "surface": "RAZORBLADE_II_DOJO__FUTILITY_MARGIN",
+      "surfaceName": "FUTILITY_MARGIN",
+      "path": "[3]",
+      "fullPath": "RAZORBLADE_II_DOJO__FUTILITY_MARGIN.[3]",
+      "alias": "RAZORBLADE_II_DOJO__FUTILITY_MARGIN.[3]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 700
+    },
+    {
+      "index": 13,
+      "surface": "RAZORBLADE_II_DOJO__LMP_THRESHOLD",
+      "surfaceName": "LMP_THRESHOLD",
+      "path": "[0]",
+      "fullPath": "RAZORBLADE_II_DOJO__LMP_THRESHOLD.[0]",
+      "alias": "RAZORBLADE_II_DOJO__LMP_THRESHOLD.[0]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 0
+    },
+    {
+      "index": 14,
+      "surface": "RAZORBLADE_II_DOJO__LMP_THRESHOLD",
+      "surfaceName": "LMP_THRESHOLD",
+      "path": "[1]",
+      "fullPath": "RAZORBLADE_II_DOJO__LMP_THRESHOLD.[1]",
+      "alias": "RAZORBLADE_II_DOJO__LMP_THRESHOLD.[1]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 5
+    },
+    {
+      "index": 15,
+      "surface": "RAZORBLADE_II_DOJO__LMP_THRESHOLD",
+      "surfaceName": "LMP_THRESHOLD",
+      "path": "[2]",
+      "fullPath": "RAZORBLADE_II_DOJO__LMP_THRESHOLD.[2]",
+      "alias": "RAZORBLADE_II_DOJO__LMP_THRESHOLD.[2]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 9
+    },
+    {
+      "index": 16,
+      "surface": "RAZORBLADE_II_DOJO__LMP_THRESHOLD",
+      "surfaceName": "LMP_THRESHOLD",
+      "path": "[3]",
+      "fullPath": "RAZORBLADE_II_DOJO__LMP_THRESHOLD.[3]",
+      "alias": "RAZORBLADE_II_DOJO__LMP_THRESHOLD.[3]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 14
+    },
+    {
+      "index": 17,
+      "surface": "RAZORBLADE_II_DOJO__LMP_THRESHOLD",
+      "surfaceName": "LMP_THRESHOLD",
+      "path": "[4]",
+      "fullPath": "RAZORBLADE_II_DOJO__LMP_THRESHOLD.[4]",
+      "alias": "RAZORBLADE_II_DOJO__LMP_THRESHOLD.[4]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 22
+    },
+    {
+      "index": 18,
+      "surface": "RAZORBLADE_II_DOJO__RAZOR_MARGIN",
+      "surfaceName": "RAZOR_MARGIN",
+      "path": "[0]",
+      "fullPath": "RAZORBLADE_II_DOJO__RAZOR_MARGIN.[0]",
+      "alias": "RAZORBLADE_II_DOJO__RAZOR_MARGIN.[0]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 0
+    },
+    {
+      "index": 19,
+      "surface": "RAZORBLADE_II_DOJO__RAZOR_MARGIN",
+      "surfaceName": "RAZOR_MARGIN",
+      "path": "[1]",
+      "fullPath": "RAZORBLADE_II_DOJO__RAZOR_MARGIN.[1]",
+      "alias": "RAZORBLADE_II_DOJO__RAZOR_MARGIN.[1]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 300
+    },
+    {
+      "index": 20,
+      "surface": "RAZORBLADE_II_DOJO__RAZOR_MARGIN",
+      "surfaceName": "RAZOR_MARGIN",
+      "path": "[2]",
+      "fullPath": "RAZORBLADE_II_DOJO__RAZOR_MARGIN.[2]",
+      "alias": "RAZORBLADE_II_DOJO__RAZOR_MARGIN.[2]",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 550
+    },
+    {
+      "index": 21,
+      "surface": "RAZORBLADE_II_DOJO__ASP_WINDOW",
+      "surfaceName": "ASP_WINDOW",
+      "path": null,
+      "fullPath": "RAZORBLADE_II_DOJO__ASP_WINDOW",
+      "alias": "RAZORBLADE_II_DOJO__ASP_WINDOW",
+      "category": "search",
+      "temperament": "aggressive",
+      "value": 50
+    }
+  ],
+  "flatKnobs": [
+    64,
+    0,
+    0,
+    1,
+    1,
+    2,
+    4,
+    0,
+    24,
+    0,
+    180,
+    400,
+    700,
+    0,
+    5,
+    9,
+    14,
+    22,
+    0,
+    300,
+    550,
+    50
+  ],
+  "categoryIndex": {
+    "aggression": [],
+    "defense": [],
+    "search": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21
+    ],
+    "time": [],
+    "temperature": [],
+    "adaptation": [],
+    "knowledge": [],
+    "balance": []
+  },
+  "temperament": {
+    "aggressive": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21
+    ],
+    "defensive": [],
+    "balanced": [],
+    "opportunistic": []
+  },
+  "legacy44Pack": {
+    "enabled": true,
+    "mode": "semantic_calibration_projection",
+    "sourceKnobCount": 22,
+    "selectedIndices": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "paths": [
+      "__derived__.layer0_pawn",
+      "__derived__.layer0_king",
+      "__derived__.layer0_queen",
+      "__derived__.layer0_rook",
+      "__derived__.layer0_minor",
+      "__derived__.layer0_tempo",
+      "__derived__.layer1_pawn",
+      "__derived__.layer1_king",
+      "__derived__.layer1_queen",
+      "__derived__.layer1_rook",
+      "__derived__.layer1_minor",
+      "__derived__.layer1_tempo",
+      "__derived__.layer2_pawn",
+      "__derived__.layer2_king",
+      "__derived__.layer2_queen",
+      "__derived__.layer2_rook",
+      "__derived__.layer2_minor",
+      "__derived__.layer2_tempo",
+      "__derived__.layer3_pawn",
+      "__derived__.layer3_king",
+      "__derived__.layer3_queen",
+      "__derived__.layer3_rook",
+      "__derived__.layer3_minor",
+      "__derived__.layer3_tempo",
+      "__derived__.aggression0",
+      "__derived__.aggression1",
+      "__derived__.aggression2",
+      "__derived__.aggression3",
+      "__derived__.layerBleed",
+      "__derived__.doubledPawnMG",
+      "__derived__.doubledPawnEG",
+      "__derived__.isolatedPawnMG",
+      "__derived__.isolatedPawnEG",
+      "__derived__.connectedPawnMG",
+      "__derived__.connectedPawnEG",
+      "__derived__.shieldBonus",
+      "__derived__.shieldHole",
+      "__derived__.rookOpenFile",
+      "__derived__.rookSemiOpen",
+      "__derived__.rook7th",
+      "__derived__.bishopPair",
+      "__derived__.queenExposed",
+      "__derived__.queenTrapped",
+      "__derived__.tempo"
+    ],
+    "values": [
+      7,
+      7,
+      14,
+      10,
+      10,
+      13,
+      11,
+      11,
+      10,
+      10,
+      9,
+      10,
+      13,
+      15,
+      10,
+      8,
+      10,
+      8,
+      15,
+      7,
+      6,
+      14,
+      10,
+      12,
+      10,
+      11,
+      9,
+      7,
+      4,
+      12,
+      22,
+      17,
+      22,
+      10,
+      15,
+      17,
+      13,
+      29,
+      16,
+      29,
+      48,
+      35,
+      25,
+      19
+    ],
+    "padded": 0
+  }
+}

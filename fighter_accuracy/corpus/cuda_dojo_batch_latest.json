@@ -1,0 +1,1323 @@
+{
+  "timestamp": "2026-04-14T07:08:32.952Z",
+  "variantPath": "/home/frosty40/VC_V1/.docker_labs/dojo_conversion_lab/variants/queensguard.src.js",
+  "batchSize": 0,
+  "trainingCaseCount": 8,
+  "disagreements": [],
+  "trainingCases": [
+    {
+      "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "nativeMove": "e2e4",
+      "appliedMove": "b2b3",
+      "coachMove": "g1h3",
+      "moveSource": "explore-random",
+      "explored": true,
+      "options": [
+        "e2e4",
+        "g1h3",
+        "a2a4",
+        "c2c3",
+        "f2f4",
+        "d2d4"
+      ],
+      "legalCount": 20,
+      "layerHint": {
+        "index": 4,
+        "phase": "trace",
+        "fullmove": 1,
+        "pieceCount": 32,
+        "depth": 9,
+        "temp": 14,
+        "source": "trace"
+      },
+      "trace": {
+        "fighter": "Queensguard",
+        "selectedSource": "search",
+        "selectedLayer": {
+          "index": 4,
+          "depth": 9,
+          "temp": 14
+        },
+        "maxDepth": 9,
+        "layerTemps": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "layers": [
+          {
+            "index": 0,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 1
+          },
+          {
+            "index": 1,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 3
+          },
+          {
+            "index": 2,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 5
+          },
+          {
+            "index": 3,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 8
+          },
+          {
+            "index": 4,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 9
+          }
+        ],
+        "iterations": [
+          {
+            "depth": 4,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 5,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 6,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 7,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 8,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 9,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          }
+        ]
+      },
+      "rootComparison": null,
+      "metrics": {
+        "totalMs": 915,
+        "depth": 9,
+        "nodes": 169586
+      },
+      "result": "draw",
+      "winner": "draw"
+    },
+    {
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/8/1P6/P1PPPPPP/RNBQKBNR w KQkq d6 0 2",
+      "nativeMove": "d2d4",
+      "appliedMove": "f2f4",
+      "coachMove": "d2d3",
+      "moveSource": "explore-random",
+      "explored": true,
+      "options": [
+        "d2d4",
+        "d2d3",
+        "f2f3",
+        "h2h4",
+        "a2a3",
+        "c1b2"
+      ],
+      "legalCount": 21,
+      "layerHint": {
+        "index": 4,
+        "phase": "trace",
+        "fullmove": 2,
+        "pieceCount": 32,
+        "depth": 9,
+        "temp": 14,
+        "source": "trace"
+      },
+      "trace": {
+        "fighter": "Queensguard",
+        "selectedSource": "search",
+        "selectedLayer": {
+          "index": 4,
+          "depth": 9,
+          "temp": 14
+        },
+        "maxDepth": 9,
+        "layerTemps": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "layers": [
+          {
+            "index": 0,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 1
+          },
+          {
+            "index": 1,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 3
+          },
+          {
+            "index": 2,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 5
+          },
+          {
+            "index": 3,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 8
+          },
+          {
+            "index": 4,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 9
+          }
+        ],
+        "iterations": [
+          {
+            "depth": 4,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 5,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 6,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 7,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 8,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 9,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          }
+        ]
+      },
+      "rootComparison": null,
+      "metrics": {
+        "totalMs": 616,
+        "depth": 9,
+        "nodes": 147343
+      },
+      "result": "draw",
+      "winner": "draw"
+    },
+    {
+      "fen": "rn1qkbnr/ppp1pppp/8/3p1b2/5P2/1P6/P1PPP1PP/RNBQKBNR w KQkq - 1 3",
+      "nativeMove": "g1f3",
+      "appliedMove": "g1f3",
+      "coachMove": "a2a3",
+      "moveSource": "native",
+      "explored": false,
+      "options": [
+        "g1f3",
+        "a2a3",
+        "c1a3",
+        "g2g3",
+        "c2c3",
+        "e2e3"
+      ],
+      "legalCount": 20,
+      "layerHint": {
+        "index": 4,
+        "phase": "trace",
+        "fullmove": 3,
+        "pieceCount": 32,
+        "depth": 9,
+        "temp": 14,
+        "source": "trace"
+      },
+      "trace": {
+        "fighter": "Queensguard",
+        "selectedSource": "search",
+        "selectedLayer": {
+          "index": 4,
+          "depth": 9,
+          "temp": 14
+        },
+        "maxDepth": 9,
+        "layerTemps": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "layers": [
+          {
+            "index": 0,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 1
+          },
+          {
+            "index": 1,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 3
+          },
+          {
+            "index": 2,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 5
+          },
+          {
+            "index": 3,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 8
+          },
+          {
+            "index": 4,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 9
+          }
+        ],
+        "iterations": [
+          {
+            "depth": 4,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 5,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 6,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 7,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 8,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 9,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          }
+        ]
+      },
+      "rootComparison": null,
+      "metrics": {
+        "totalMs": 703,
+        "depth": 9,
+        "nodes": 193069
+      },
+      "result": "draw",
+      "winner": "draw"
+    },
+    {
+      "fen": "rn1qkbnr/ppp2ppp/4p3/3p1b2/5P2/1P3N2/P1PPP1PP/RNBQKB1R w KQkq - 0 4",
+      "nativeMove": "d2d4",
+      "appliedMove": "d2d4",
+      "coachMove": "a2a3",
+      "moveSource": "native",
+      "explored": false,
+      "options": [
+        "d2d4",
+        "a2a3",
+        "f3g5",
+        "e2e3",
+        "b3b4",
+        "b1c3"
+      ],
+      "legalCount": 24,
+      "layerHint": {
+        "index": 4,
+        "phase": "trace",
+        "fullmove": 4,
+        "pieceCount": 32,
+        "depth": 9,
+        "temp": 14,
+        "source": "trace"
+      },
+      "trace": {
+        "fighter": "Queensguard",
+        "selectedSource": "search",
+        "selectedLayer": {
+          "index": 4,
+          "depth": 9,
+          "temp": 14
+        },
+        "maxDepth": 9,
+        "layerTemps": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "layers": [
+          {
+            "index": 0,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 1
+          },
+          {
+            "index": 1,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 3
+          },
+          {
+            "index": 2,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 5
+          },
+          {
+            "index": 3,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 8
+          },
+          {
+            "index": 4,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 10
+          }
+        ],
+        "iterations": [
+          {
+            "depth": 4,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 5,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 6,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 7,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 8,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 9,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          }
+        ]
+      },
+      "rootComparison": null,
+      "metrics": {
+        "totalMs": 982,
+        "depth": 10,
+        "nodes": 266240
+      },
+      "result": "draw",
+      "winner": "draw"
+    },
+    {
+      "fen": "rn1qkbnr/pp3ppp/2p1p3/3p1b2/3P1P2/1P3N2/P1P1P1PP/RNBQKB1R w KQkq - 0 5",
+      "nativeMove": "b1c3",
+      "appliedMove": "b1c3",
+      "coachMove": "a2a3",
+      "moveSource": "native",
+      "explored": false,
+      "options": [
+        "b1c3",
+        "a2a3",
+        "c1b2",
+        "b1a3",
+        "h1g1",
+        "c1e3"
+      ],
+      "legalCount": 28,
+      "layerHint": {
+        "index": 3,
+        "phase": "trace",
+        "fullmove": 5,
+        "pieceCount": 32,
+        "depth": 8,
+        "temp": 17,
+        "source": "trace"
+      },
+      "trace": {
+        "fighter": "Queensguard",
+        "selectedSource": "search",
+        "selectedLayer": {
+          "index": 3,
+          "depth": 8,
+          "temp": 17
+        },
+        "maxDepth": 8,
+        "layerTemps": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "layers": [
+          {
+            "index": 0,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 1
+          },
+          {
+            "index": 1,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 3
+          },
+          {
+            "index": 2,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 5
+          },
+          {
+            "index": 3,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 8
+          }
+        ],
+        "iterations": [
+          {
+            "depth": 3,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 4,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 5,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 6,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 7,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 8,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          }
+        ]
+      },
+      "rootComparison": null,
+      "metrics": {
+        "totalMs": 662,
+        "depth": 8,
+        "nodes": 173846
+      },
+      "result": "draw",
+      "winner": "draw"
+    },
+    {
+      "fen": "rn1qkb1r/pp3ppp/2p1pn2/3p1b2/3P1P2/1PN2N2/P1P1P1PP/R1BQKB1R w KQkq - 2 6",
+      "nativeMove": "c1b2",
+      "appliedMove": "c1b2",
+      "coachMove": "c3d5",
+      "moveSource": "native",
+      "explored": false,
+      "options": [
+        "c1b2",
+        "c3d5",
+        "c1a3",
+        "f3g1",
+        "h2h4",
+        "g2g4"
+      ],
+      "legalCount": 29,
+      "layerHint": {
+        "index": 4,
+        "phase": "trace",
+        "fullmove": 6,
+        "pieceCount": 32,
+        "depth": 9,
+        "temp": 14,
+        "source": "trace"
+      },
+      "trace": {
+        "fighter": "Queensguard",
+        "selectedSource": "search",
+        "selectedLayer": {
+          "index": 4,
+          "depth": 9,
+          "temp": 14
+        },
+        "maxDepth": 9,
+        "layerTemps": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "layers": [
+          {
+            "index": 0,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 1
+          },
+          {
+            "index": 1,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 3
+          },
+          {
+            "index": 2,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 5
+          },
+          {
+            "index": 3,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 8
+          },
+          {
+            "index": 4,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 9
+          }
+        ],
+        "iterations": [
+          {
+            "depth": 4,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 5,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 6,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 7,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 8,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 9,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          }
+        ]
+      },
+      "rootComparison": null,
+      "metrics": {
+        "totalMs": 598,
+        "depth": 9,
+        "nodes": 141382
+      },
+      "result": "draw",
+      "winner": "draw"
+    },
+    {
+      "fen": "rn1qk2r/pp3ppp/2pbpn2/3p1b2/3P1P2/1PN2N2/PBP1P1PP/R2QKB1R w KQkq - 4 7",
+      "nativeMove": "e2e3",
+      "appliedMove": "e2e3",
+      "coachMove": "c3d5",
+      "moveSource": "native",
+      "explored": false,
+      "options": [
+        "e2e3",
+        "c3d5",
+        "f3e5",
+        "e1f2",
+        "e2e4",
+        "a1c1"
+      ],
+      "legalCount": 30,
+      "layerHint": {
+        "index": 4,
+        "phase": "trace",
+        "fullmove": 7,
+        "pieceCount": 32,
+        "depth": 9,
+        "temp": 10,
+        "source": "trace"
+      },
+      "trace": {
+        "fighter": "Queensguard",
+        "selectedSource": "search",
+        "selectedLayer": {
+          "index": 4,
+          "depth": 9,
+          "temp": 10
+        },
+        "maxDepth": 9,
+        "layerTemps": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "layers": [
+          {
+            "index": 0,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 1
+          },
+          {
+            "index": 1,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 3
+          },
+          {
+            "index": 2,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 5
+          },
+          {
+            "index": 3,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 8
+          },
+          {
+            "index": 4,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 9
+          }
+        ],
+        "iterations": [
+          {
+            "depth": 4,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 5,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 6,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 7,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 8,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 9,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          }
+        ]
+      },
+      "rootComparison": null,
+      "metrics": {
+        "totalMs": 493,
+        "depth": 9,
+        "nodes": 154228
+      },
+      "result": "draw",
+      "winner": "draw"
+    },
+    {
+      "fen": "rn1qk2r/pp3ppp/2pbp3/3p1b2/3PnP2/1PN1PN2/PBP3PP/R2QKB1R w KQkq - 1 8",
+      "nativeMove": "f1d3",
+      "appliedMove": "f1d3",
+      "coachMove": "c3e4",
+      "moveSource": "native",
+      "explored": false,
+      "options": [
+        "f1d3",
+        "c3e4",
+        "f1b5",
+        "b2a3",
+        "g2g4",
+        "d1d3"
+      ],
+      "legalCount": 34,
+      "layerHint": {
+        "index": 4,
+        "phase": "trace",
+        "fullmove": 8,
+        "pieceCount": 32,
+        "depth": 10,
+        "temp": 10,
+        "source": "trace"
+      },
+      "trace": {
+        "fighter": "Queensguard",
+        "selectedSource": "search",
+        "selectedLayer": {
+          "index": 4,
+          "depth": 10,
+          "temp": 10
+        },
+        "maxDepth": 10,
+        "layerTemps": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "layers": [
+          {
+            "index": 0,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 1
+          },
+          {
+            "index": 1,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 3
+          },
+          {
+            "index": 2,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 5
+          },
+          {
+            "index": 3,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 8
+          },
+          {
+            "index": 4,
+            "temp": 0,
+            "visits": 0,
+            "rootHits": 0,
+            "iterHits": 0,
+            "maxDepth": 11
+          }
+        ],
+        "iterations": [
+          {
+            "depth": 5,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 6,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 7,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 8,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 9,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          },
+          {
+            "depth": 10,
+            "layer": 0,
+            "temp": 0,
+            "aspiration": 0,
+            "score": null,
+            "rootCandidates": []
+          }
+        ]
+      },
+      "rootComparison": null,
+      "metrics": {
+        "totalMs": 949,
+        "depth": 11,
+        "nodes": 235520
+      },
+      "result": "draw",
+      "winner": "draw"
+    }
+  ],
+  "trainingSummary": {
+    "totalCases": 8,
+    "explorationCases": 2,
+    "bySource": {
+      "explore-random": 2,
+      "native": 6
+    },
+    "byResult": {
+      "win": 0,
+      "draw": 8,
+      "loss": 0
+    },
+    "byLayer": {
+      "0": {
+        "cases": 0,
+        "exploration": 0,
+        "wins": 0,
+        "draws": 0,
+        "losses": 0
+      },
+      "1": {
+        "cases": 0,
+        "exploration": 0,
+        "wins": 0,
+        "draws": 0,
+        "losses": 0
+      },
+      "2": {
+        "cases": 0,
+        "exploration": 0,
+        "wins": 0,
+        "draws": 0,
+        "losses": 0
+      },
+      "3": {
+        "cases": 1,
+        "exploration": 0,
+        "wins": 0,
+        "draws": 1,
+        "losses": 0
+      },
+      "4": {
+        "cases": 7,
+        "exploration": 2,
+        "wins": 0,
+        "draws": 7,
+        "losses": 0
+      }
+    },
+    "rootComparison": {
+      "comparedCases": 0,
+      "exploredCompared": 0,
+      "avgAppliedRank": 0,
+      "avgNativeRank": 0,
+      "avgCoachRank": 0,
+      "coachBetterThanNative": 0,
+      "appliedOutsideRoot": 0
+    }
+  },
+  "exploration": {
+    "rate": 0.12,
+    "moveCaseRate": 0.35,
+    "candidates": 6,
+    "randomSeed": "1776150425515-2924661"
+  },
+  "assessment": {
+    "dominantTemperament": "defensive",
+    "categoryBudget": {
+      "aggression": 0.052,
+      "defense": 0.103,
+      "search": 0.379,
+      "time": 0.155,
+      "temperature": 0.207,
+      "adaptation": 0.017,
+      "knowledge": 0.086,
+      "balance": 0
+    },
+    "priorities": [
+      "test tactical opportunism and heat knobs before adding more stability",
+      "sweep heat bands independently so layer temperatures do not move as one block",
+      "batch recovery and discipline knobs separately from raw opportunism knobs",
+      "treat time knobs as posture controls (spender vs saver), not just throughput controls",
+      "improve recovery discipline before rewarding fresh tactical deviation",
+      "raise endgame discipline so late conversions stop leaking into speculation"
+    ],
+    "canonicalSchema": {
+      "canonicalKnobs": "flat map of fullPath -> numeric value",
+      "calibrationProfile": "dojo.calibration.v1",
+      "acceptedPathSource": "assessment.knobs[].fullPath",
+      "constraints": [
+        "numeric values only",
+        "unknown paths are rejected by the dojo gate"
+      ]
+    },
+    "byCategory": {
+      "aggression": [
+        "QUEENGUARD_X_KNOBS.opportunityHeat"
+      ],
+      "defense": [
+        "QUEENGUARD_X_KNOBS.cavalryEvDivisor",
+        "QUEENGUARD_X_KNOBS.counterScale",
+        "QUEENGUARD_X_KNOBS.counterSafetyWeight",
+        "QUEENGUARD_X_KNOBS.kingRingHeat",
+        "QUEENGUARD_X_KNOBS.rootStatDivisor",
+        "QUEENGUARD_X_KNOBS.rootScoreDivisor"
+      ],
+      "search": [
+        "QUEENGUARD_X_KNOBS.layerConfidenceDivisor",
+        "QUEENGUARD_X_KNOBS.aspirationStep",
+        "QUEENGUARD_X_KNOBS.razorStep",
+        "QUEENGUARD_X_KNOBS.futilityStep",
+        "QUEENGUARD_X_KNOBS.lmpDivisor",
+        "QUEENGUARD_X_KNOBS.lmrDivisor",
+        "QUEENGUARD_X_KNOBS.cavalryEvalWeight",
+        "QUEENGUARD_X_KNOBS.counterActivityWeight",
+        "QUEENGUARD_X_KNOBS.layerEvalWeight",
+        "QUEENGUARD_X_KNOBS.rootDepthWeight",
+        "FUTILITY_MARGIN.[0]",
+        "FUTILITY_MARGIN.[1]",
+        "FUTILITY_MARGIN.[2]",
+        "FUTILITY_MARGIN.[3]",
+        "LMP_THRESHOLD.[0]",
+        "LMP_THRESHOLD.[1]",
+        "LMP_THRESHOLD.[2]",
+        "LMP_THRESHOLD.[3]",
+        "LMP_THRESHOLD.[4]",
+        "RAZOR_MARGIN.[0]",
+        "RAZOR_MARGIN.[1]",
+        "RAZOR_MARGIN.[2]"
+      ],
+      "time": [
+        "QUEENGUARD_X_KNOBS.timeBase",
+        "QUEENGUARD_X_KNOBS.timeVolatility",
+        "QUEENGUARD_X_KNOBS.timeConfidence",
+        "QUEENGUARD_X_KNOBS.timeEndgame",
+        "QUEENGUARD_X_KNOBS.timeFloor",
+        "QUEENGUARD_X_KNOBS.timeCap",
+        "QUEENGUARD_X_KNOBS.aspirationBase",
+        "QUEENGUARD_X_KNOBS.basePieceHeat",
+        "QUEENGUARD_X_KNOBS.captureWeight"
+      ],
+      "temperature": [
+        "QUEENGUARD_X_KNOBS.layerTemps[0]",
+        "QUEENGUARD_X_KNOBS.layerTemps[1]",
+        "QUEENGUARD_X_KNOBS.layerTemps[2]",
+        "QUEENGUARD_X_KNOBS.layerTemps[3]",
+        "QUEENGUARD_X_KNOBS.layerTemps[4]",
+        "QUEENGUARD_X_KNOBS.layerVolatilityDivisor",
+        "QUEENGUARD_X_KNOBS.centerHeat",
+        "QUEENGUARD_X_KNOBS.bookHeat",
+        "QUEENGUARD_X_KNOBS.squareHeatWeight",
+        "QUEENGUARD_X_KNOBS.pieceHeatWeight",
+        "QUEENGUARD_X_KNOBS.tempMoveWeight"
+      ],
+      "adaptation": [
+        "QUEENGUARD_X_KNOBS.cavalryConfidenceScale"
+      ],
+      "knowledge": [
+        "QUEENGUARD_X_KNOBS.timeBookDiscount",
+        "QUEENGUARD_X_KNOBS.unEvalDivisor",
+        "QUEENGUARD_X_KNOBS.evalBridgePly",
+        "QUEENGUARD_X_KNOBS.unEvalWeight",
+        "QUEENGUARD_X_KNOBS.evalBridgeDivisor"
+      ],
+      "balance": []
+    },
+    "exampleUpdate": {
+      "QUEENGUARD_X_KNOBS.layerTemps[0]": 3,
+      "QUEENGUARD_X_KNOBS.layerTemps[1]": 6,
+      "QUEENGUARD_X_KNOBS.layerTemps[2]": 8,
+      "QUEENGUARD_X_KNOBS.layerTemps[3]": 11,
+      "QUEENGUARD_X_KNOBS.layerTemps[4]": 8,
+      "QUEENGUARD_X_KNOBS.timeBase": 900,
+      "QUEENGUARD_X_KNOBS.timeVolatility": 5,
+      "QUEENGUARD_X_KNOBS.timeConfidence": 4
+    }
+  },
+  "finalFlush": true
+}
