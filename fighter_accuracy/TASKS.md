@@ -9,5 +9,12 @@
 - [x] Reproduce a tracked 0/5 smoke matrix with explicit timeout conditions.
 - [ ] Reproduce the full strict 24-sample 0/5 baseline from the tracked gate.
 - [x] Add first mismatch trace for Razor X start position.
+- [x] Add GPU root-candidate trace output for disagreements.
+- [x] Rule out serial root search as a parity lift on the fixed 4-sample smoke.
+- [x] Rule out root move ordering as a parity lift on the fixed 4-sample smoke.
+- [x] Rule out first-legal policy as a general parity lift on the fixed 4-sample smoke.
 - [ ] Improve GPU fighter move parity against the CPU fighter.
+- [ ] Implement source-family dispatch from CUDA fighter blob surfaces.
+- [ ] Implement deterministic CPU timeout/rootBestMove behavior without using the
+      CPU move as an oracle.
 - [ ] Add throughput/concurrency curves only after the accuracy gate is honest.

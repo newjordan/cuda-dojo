@@ -470,6 +470,42 @@ static bool loadFlatKnobsFromBlob(const char* blobPath, float* out, int count) {
   return parsed > 0;
 }
 
+enum FighterFamily {
+  FIGHTER_FAMILY_UNKNOWN = 0,
+  FIGHTER_FAMILY_TRAINCAR = 1,
+  FIGHTER_FAMILY_RAZORBLADE_II = 2,
+};
+
+static FighterFamily detectFighterFamilyFromBlob(const char* blobPath) {
+  if (!blobPath || !*blobPath) return FIGHTER_FAMILY_UNKNOWN;
+  std::ifstream stream(blobPath, std::ios::in | std::ios::binary);
+  if (!stream.good()) return FIGHTER_FAMILY_UNKNOWN;
+  stream.seekg(0, std::ios::end);
+  const std::streamoff size = stream.tellg();
+  if (size <= 0) return FIGHTER_FAMILY_UNKNOWN;
+  std::string text;
+  text.resize((size_t)size);
+  stream.seekg(0, std::ios::beg);
+  stream.read(&text[0], size);
+  if (!stream.good() && !stream.eof()) return FIGHTER_FAMILY_UNKNOWN;
+
+  const char* root = text.c_str();
+  if (strstr(root, "RAZORBLADE_II_DOJO__MAX_DEPTH") || strstr(root, "\"name\":\"MAX_DEPTH\""))
+    return FIGHTER_FAMILY_RAZORBLADE_II;
+  if (strstr(root, "RAZOR_X_KNOBS") || strstr(root, "QUEENGUARD_X_KNOBS") ||
+      strstr(root, "FORTRESS_X_KNOBS") || strstr(root, "RAZOR_X_5S_KNOBS"))
+    return FIGHTER_FAMILY_TRAINCAR;
+  return FIGHTER_FAMILY_UNKNOWN;
+}
+
+static const char* fighterFamilyName(FighterFamily family) {
+  switch (family) {
+    case FIGHTER_FAMILY_TRAINCAR: return "traincar";
+    case FIGHTER_FAMILY_RAZORBLADE_II: return "razorblade_ii";
+    default: return "unknown";
+  }
+}
+
 // ============================================================================
 // HOST: Parse FEN — now computes incremental PeSTO mg/eg scores
 // ============================================================================
@@ -1596,6 +1632,7 @@ int main(int argc, char** argv) {
   float flatKnobs[64];
   memset(flatKnobs, 0, sizeof(flatKnobs));
   const char* fighterBlobPath = resolveFighterBlobPath(argc, argv);
+  FighterFamily fighterFamily = detectFighterFamilyFromBlob(fighterBlobPath);
   if (fighterBlobPath && *fighterBlobPath) {
     if (!loadLegacyDefaultsFromBlob(fighterBlobPath, defaults, KNOB_COUNT)) {
       fprintf(stderr, "[dojo] warning: failed to load fighter blob %s, using compiled defaults\n", fighterBlobPath);
@@ -1611,6 +1648,7 @@ int main(int argc, char** argv) {
       }
     }
   }
+  fprintf(stderr, "[dojo] fighter family: %s\n", fighterFamilyName(fighterFamily));
   fprintf(stderr, "[dojo] search depth: %d\n", searchDepth);
   if (fullQeval) fprintf(stderr, "[dojo] full qsearch eval: enabled\n");
   if (filterLegal) fprintf(stderr, "[dojo] legal child filter: enabled\n");
@@ -1873,6 +1911,7 @@ int main(int argc, char** argv) {
     totalPos, totalFixable, totalUnfixable, totalPos>0?(float)totalFixable/totalPos:0);
   printf("\"elapsed\":%.2f,\"posPerSec\":%.1f,", elapsed, totalPos > 0 ? totalPos/elapsed : 0.0);
   printf("\"searchDepth\":%d,", searchDepth);
+  printf("\"fighterFamily\":\"%s\",", fighterFamilyName(fighterFamily));
   printf("\"verdict\":\"%s\",",
     totalPos==0 ? (agreements > 0 ? "ALL_AGREE" : "NO_DATA") :
     totalFixable*100/totalPos >= 70 ? "ARCHITECTURE_FINE" :
