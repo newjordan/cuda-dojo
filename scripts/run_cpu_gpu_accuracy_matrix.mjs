@@ -35,6 +35,8 @@ function parseArgs(argv) {
     gpuSerialRoot: false,
     gpuRootOrder: false,
     gpuTraincarRootTieBreak: false,
+    gpuTraincarRunwayRoot: false,
+    gpuTraincarRunwayMargin: 85,
     gpuFamilyDispatch: false,
     gpuTimeoutRootProxy: false,
     gpuEmitAll: false,
@@ -59,6 +61,8 @@ function parseArgs(argv) {
     else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
     else if (arg === '--gpu-root-order') options.gpuRootOrder = true;
     else if (arg === '--gpu-traincar-root-tiebreak') options.gpuTraincarRootTieBreak = true;
+    else if (arg === '--gpu-traincar-runway-root') options.gpuTraincarRunwayRoot = true;
+    else if (arg === '--gpu-traincar-runway-margin') options.gpuTraincarRunwayMargin = Math.max(0, Number(argv[++i] || options.gpuTraincarRunwayMargin));
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
     else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
     else if (arg === '--gpu-emit-all') options.gpuEmitAll = true;
@@ -89,6 +93,7 @@ function runOne(entry, options) {
   if (options.gpuSerialRoot) args.push('--gpu-serial-root');
   if (options.gpuRootOrder) args.push('--gpu-root-order');
   if (options.gpuTraincarRootTieBreak) args.push('--gpu-traincar-root-tiebreak');
+  if (options.gpuTraincarRunwayRoot) args.push('--gpu-traincar-runway-root', '--gpu-traincar-runway-margin', String(options.gpuTraincarRunwayMargin));
   if (options.gpuFamilyDispatch) args.push('--gpu-family-dispatch');
   if (options.gpuTimeoutRootProxy) args.push('--gpu-timeout-root-proxy');
   if (options.gpuEmitAll) args.push('--gpu-emit-all');

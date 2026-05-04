@@ -26,6 +26,8 @@ function parseArgs(argv) {
     gpuSerialRoot: false,
     gpuRootOrder: false,
     gpuTraincarRootTieBreak: false,
+    gpuTraincarRunwayRoot: false,
+    gpuTraincarRunwayMargin: 85,
     gpuFamilyDispatch: false,
     gpuTimeoutRootProxy: false,
     gpuEmitAll: false,
@@ -51,6 +53,8 @@ function parseArgs(argv) {
     else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
     else if (arg === '--gpu-root-order') options.gpuRootOrder = true;
     else if (arg === '--gpu-traincar-root-tiebreak') options.gpuTraincarRootTieBreak = true;
+    else if (arg === '--gpu-traincar-runway-root') options.gpuTraincarRunwayRoot = true;
+    else if (arg === '--gpu-traincar-runway-margin') options.gpuTraincarRunwayMargin = Math.max(0, Number(argv[++i] || options.gpuTraincarRunwayMargin));
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
     else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
     else if (arg === '--gpu-emit-all') options.gpuEmitAll = true;
@@ -119,6 +123,7 @@ function runGpuTrace(options, fighterBlob, fen, cpuMove, legalMoves) {
   if (options.gpuSerialRoot) forgeArgs.push('--serial-root');
   if (options.gpuRootOrder) forgeArgs.push('--root-order');
   if (options.gpuTraincarRootTieBreak) forgeArgs.push('--traincar-root-tiebreak');
+  if (options.gpuTraincarRunwayRoot) forgeArgs.push('--traincar-runway-root', '--traincar-runway-margin', String(options.gpuTraincarRunwayMargin));
   if (options.gpuFamilyDispatch) forgeArgs.push('--family-dispatch');
   if (options.gpuTimeoutRootProxy) forgeArgs.push('--timeout-root-proxy');
   if (options.gpuEmitAll) forgeArgs.push('--emit-all');
@@ -234,6 +239,8 @@ function main() {
       gpuSerialRoot: options.gpuSerialRoot,
       gpuRootOrder: options.gpuRootOrder,
       gpuTraincarRootTieBreak: options.gpuTraincarRootTieBreak,
+      gpuTraincarRunwayRoot: options.gpuTraincarRunwayRoot,
+      gpuTraincarRunwayMargin: options.gpuTraincarRunwayMargin,
       gpuFamilyDispatch: options.gpuFamilyDispatch,
       gpuTimeoutRootProxy: options.gpuTimeoutRootProxy,
       gpuEmitAll: options.gpuEmitAll,

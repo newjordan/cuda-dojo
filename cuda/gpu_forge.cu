@@ -374,6 +374,16 @@ static int hostTraincarRootTieScore(const Board* board, const Move* move) {
   return score;
 }
 
+static int chooseTraincarRunwayRoot(Move* moves, float* scores, int count, int currentBestIdx, float margin) {
+  if (currentBestIdx < 0 || currentBestIdx >= count) return currentBestIdx;
+  const float bestScore = scores[currentBestIdx];
+  for (int i = 0; i < count; i++) {
+    if (scores[i] <= -99998.0f) continue;
+    if (scores[i] >= bestScore - margin) return i;
+  }
+  return currentBestIdx;
+}
+
 static void orderRootMovesHost(const Board* board, Move* moves, int count) {
   int scores[MAX_MOVES];
   for (int i = 0; i < count; i++) scores[i] = hostRootMoveScore(board, &moves[i]);
@@ -2144,6 +2154,8 @@ int main(int argc, char** argv) {
   int serialRoot = 0;
   int rootOrder = 0;
   int traincarRootTieBreak = 0;
+  int traincarRunwayRoot = 0;
+  float traincarRunwayMargin = 85.0f;
   int familyDispatch = 0;
   int timeoutRootProxy = 0;
   int traincarBook = 0;
@@ -2195,6 +2207,16 @@ int main(int argc, char** argv) {
     }
     if (strcmp(argv[i], "--traincar-root-tiebreak") == 0) {
       traincarRootTieBreak = 1;
+      continue;
+    }
+    if (strcmp(argv[i], "--traincar-runway-root") == 0) {
+      traincarRunwayRoot = 1;
+      continue;
+    }
+    if (strcmp(argv[i], "--traincar-runway-margin") == 0 && i + 1 < argc) {
+      traincarRunwayMargin = (float)atof(argv[++i]);
+      if (traincarRunwayMargin < 0.0f) traincarRunwayMargin = 0.0f;
+      if (traincarRunwayMargin > 500.0f) traincarRunwayMargin = 500.0f;
       continue;
     }
     if (strcmp(argv[i], "--family-dispatch") == 0) {
@@ -2276,6 +2298,7 @@ int main(int argc, char** argv) {
   if (serialRoot) fprintf(stderr, "[dojo] serial root search: enabled\n");
   if (rootOrder) fprintf(stderr, "[dojo] root move ordering: enabled\n");
   if (traincarRootTieBreak) fprintf(stderr, "[dojo] traincar root tie-break: enabled\n");
+  if (traincarRunwayRoot) fprintf(stderr, "[dojo] traincar runway root: enabled (margin %.1f)\n", traincarRunwayMargin);
   if (familyDispatch) fprintf(stderr, "[dojo] source-family dispatch: enabled\n");
   if (timeoutRootProxy) fprintf(stderr, "[dojo] timeout root proxy: enabled\n");
   if (traincarBook) fprintf(stderr, "[dojo] traincar book: enabled (%d entries)\n", traincarBookCount);
@@ -2459,6 +2482,13 @@ int main(int argc, char** argv) {
       }
     }
     if (bestIdx < 0 || bestScore <= -99998.0f) { skippedNoLegalRootScore++; continue; }
+    if (traincarRunwayRoot && fighterFamily == FIGHTER_FAMILY_TRAINCAR && hostFighterId(fighterBlobPath) == 0) {
+      int runwayIdx = chooseTraincarRunwayRoot(h_moves, h_searchScores, numMoves, bestIdx, traincarRunwayMargin);
+      if (runwayIdx >= 0 && runwayIdx < numMoves && h_searchScores[runwayIdx] > -99998.0f) {
+        bestIdx = runwayIdx;
+        bestScore = h_searchScores[bestIdx];
+      }
+    }
     if (timeoutRootProxy) {
       for (int i = 0; i < numMoves; i++) {
         if (h_searchScores[i] > -99998.0f) {
@@ -2589,11 +2619,13 @@ int main(int argc, char** argv) {
   printf("\"elapsed\":%.2f,\"posPerSec\":%.1f,", elapsed, totalPos > 0 ? totalPos/elapsed : 0.0);
   printf("\"searchDepth\":%d,", searchDepth);
   printf("\"fighterFamily\":\"%s\",", fighterFamilyName(fighterFamily));
-  printf("\"familyDispatch\":%s,\"timeoutRootProxy\":%s,\"cpuShapedSearch\":%s,\"traincarRootTieBreak\":%s,",
+  printf("\"familyDispatch\":%s,\"timeoutRootProxy\":%s,\"cpuShapedSearch\":%s,\"traincarRootTieBreak\":%s,\"traincarRunwayRoot\":%s,\"traincarRunwayMargin\":%.1f,",
     familyDispatch ? "true" : "false",
     timeoutRootProxy ? "true" : "false",
     cpuShapedSearch ? "true" : "false",
-    traincarRootTieBreak ? "true" : "false");
+    traincarRootTieBreak ? "true" : "false",
+    traincarRunwayRoot ? "true" : "false",
+    traincarRunwayMargin);
   printf("\"emitAllPositions\":%s,", emitAllPositions ? "true" : "false");
   printf("\"traincarBook\":%s,\"traincarBookEntries\":%d,\"traincarBookOverrides\":%d,\"traincarBookMisses\":%d,",
     traincarBook ? "true" : "false",

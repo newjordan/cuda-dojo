@@ -37,6 +37,10 @@
       regresses on heldout, so it is not promoted.
 - [x] Train expanded N=64 FFN and test offset-64 heldout; still regresses, so
       naive FFN reranking remains blocked.
+- [x] Add opt-in Traincar runway-root ablation; traced Razor X fix did not
+      promote on full offset-64.
+- [x] Re-test CPU-shaped search on offset-64; average lift only, Razor X still
+      fails and depth 4 collapses.
 - [ ] Improve GPU fighter move parity against the CPU fighter.
 - [ ] Implement source-family dispatch from CUDA fighter blob surfaces.
 - [ ] Implement deterministic CPU timeout/rootBestMove behavior without using the

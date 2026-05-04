@@ -76,6 +76,14 @@ fresh-process fixes:
   full-set top-1 and 90.6% offline holdout, but fails the offset-64 runtime
   gate: strict is 72.5%, FFN proxy is 64.4%, and Razor X still fails. Naive FFN
   reranking is therefore an ablation lane, not the current parity fix.
+- Opt-in `--gpu-traincar-runway-root` was added to test CPU-runway-like root
+  selection without using the CPU move. It fixes a traced Razor X disagreement
+  but does not promote: offset-64 full gate reaches 73.8% average and Razor X
+  still fails at 46.9%. Combining it with `--gpu-cpu-shaped-search` reaches
+  76.6% average but still fails Razor X at 46.9%.
+- Rechecking strict offset-64 CPU-shaped search found a useful average lift
+  only: 75.6% average, Razor X 42.2%. CPU-shaped depth 4 collapses Razor X to
+  6.3%, so deeper fixed search is not the path.
 
 Interpretation:
 
