@@ -35,6 +35,10 @@ fresh-process fixes:
   smoke; RazorBlade II remains strict-failing.
 - `--gpu-family-dispatch`: 5/5 pass on the 4-sample smoke; RazorBlade II is a
   proxy pass, not strict parity.
+- `--gpu-family-dispatch --samples 8 --gpu-depth 3`: 3/5 pass; Razor X and
+  Firebird fail on deeper Traincar search/eval mismatches.
+- `--gpu-family-dispatch --samples 8 --gpu-depth 8`: 0/5 pass, so increasing
+  GPU search depth alone is not a parity fix.
 
 Interpretation:
 
