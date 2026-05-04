@@ -27,12 +27,13 @@ The preserved baseline from the strict lab is:
 - [Tracked gate smoke matrix](baselines/tracked_gate_smoke_cpu_gpu_accuracy_matrix_2026-05-03.md): 0/5 pass
 - [Razor X startpos trace](baselines/tracked_gate_razor_x_startpos_trace_2026-05-03.json): CPU `a2a3`, GPU `d2d4`, CPU move ranked `10/20` by GPU
 
-Current local working condition after the CPU harness `currentFen` fix:
+Current local working condition after the CPU harness `currentFen` and
+fresh-process fixes:
 
-- `standalone_current_fen+strict`: 0/5 pass on the 4-sample smoke.
-- `standalone_current_fen+strict_traincar_book`: 2/5 pass on the 4-sample
-  smoke, with Razor X and Fortress passing.
-- `--gpu-family-dispatch`: 3/5 pass on the 4-sample smoke; RazorBlade II is a
+- `standalone_fresh_process+strict`: 0/5 pass on the 4-sample smoke.
+- `standalone_fresh_process+strict_traincar_book`: 4/5 pass on the 4-sample
+  smoke; RazorBlade II remains strict-failing.
+- `--gpu-family-dispatch`: 5/5 pass on the 4-sample smoke; RazorBlade II is a
   proxy pass, not strict parity.
 
 Interpretation:

@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
 const REPORT_DIR = join(REPO_ROOT, 'runtime', 'reports');
 const GPU_FORGE_BIN = join(REPO_ROOT, 'cuda', 'gpu_forge');
-const CPU_HARNESS_CONDITION = 'standalone_current_fen';
+const CPU_HARNESS_CONDITION = 'standalone_fresh_process';
 
 function parseArgs(argv) {
   const options = {
@@ -161,18 +161,18 @@ function deriveBlobPath(fighterPath, explicitBlob) {
 }
 
 function buildCpuInputLines(fighterPath, fens) {
-  resetAgentCache(fighterPath);
-  const fn = compileAgent(fighterPath, {
-    forceReload: true,
-    deterministicClock: true,
-    clockStartMs: 1700000000000,
-    clockStepMs: 25,
-  });
-  if (!fn) throw new Error(`Could not compile fighter: ${fighterPath}`);
-
   const usable = [];
   const skipped = [];
   for (const fen of fens) {
+    resetAgentCache(fighterPath);
+    const fn = compileAgent(fighterPath, {
+      forceReload: true,
+      deterministicClock: true,
+      clockStartMs: 1700000000000,
+      clockStepMs: 25,
+    });
+    if (!fn) throw new Error(`Could not compile fighter: ${fighterPath}`);
+
     const legal = generateLegalMoves(parseFen(fen));
     if (!legal.length) {
       skipped.push({ fen, reason: 'no_legal_moves' });

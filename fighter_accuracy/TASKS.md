@@ -15,6 +15,8 @@
 - [x] Rule out first-legal policy as a general parity lift on the fixed 4-sample smoke.
 - [x] Fix the CPU harness `currentFen` path so the oracle matches standalone
       fighter book/briefing behavior.
+- [x] Fix the CPU harness batch loop so each FEN gets a fresh standalone
+      fighter instance.
 - [x] Add an opt-in Traincar book lookup ablation for the GPU comparator.
 - [x] Validate mixed family dispatch: Traincar book plus RazorBlade II proxy.
 - [ ] Improve GPU fighter move parity against the CPU fighter.
