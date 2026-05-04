@@ -249,7 +249,10 @@ function main() {
   const { usable, skipped, input } = buildCpuInputLines(fighterPath, corpus);
   const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuTraincarBook, options.gpuSerialRoot, options.gpuRootOrder, options.gpuFamilyDispatch, options.gpuTimeoutRootProxy);
   const summary = gpu.summary || {};
-  const gpuCondition = summary.timeoutRootProxy ? 'proxy' : (summary.traincarBook ? 'strict_traincar_book' : 'strict');
+  const gpuTags = [summary.timeoutRootProxy ? 'proxy' : 'strict'];
+  if (summary.traincarBook) gpuTags.push('traincar_book');
+  if (options.gpuTraincarEval) gpuTags.push('traincar_eval');
+  const gpuCondition = gpuTags.join('_');
   const conditionLabel = `${CPU_HARNESS_CONDITION}+${gpuCondition}`;
 
   const comparable = Number(summary.comparablePositions || 0);

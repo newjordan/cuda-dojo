@@ -39,6 +39,7 @@ fresh-process fixes:
   Firebird fail on deeper Traincar search/eval mismatches.
 - `--gpu-family-dispatch --samples 8 --gpu-depth 8`: 0/5 pass, so increasing
   GPU search depth alone is not a parity fix.
+- Adding `--gpu-traincar-eval` to the 8-sample family-dispatch run stays 3/5.
 
 Interpretation:
 
