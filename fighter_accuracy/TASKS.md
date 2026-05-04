@@ -35,6 +35,8 @@
 - [x] Expand larger validation gates with tracked `gpu_spine/book.jsonl` FENs.
 - [x] Add `--corpus-offset` and run heldout N=64 FFN validation; current FFN
       regresses on heldout, so it is not promoted.
+- [x] Train expanded N=64 FFN and test offset-64 heldout; still regresses, so
+      naive FFN reranking remains blocked.
 - [ ] Improve GPU fighter move parity against the CPU fighter.
 - [ ] Implement source-family dispatch from CUDA fighter blob surfaces.
 - [ ] Implement deterministic CPU timeout/rootBestMove behavior without using the

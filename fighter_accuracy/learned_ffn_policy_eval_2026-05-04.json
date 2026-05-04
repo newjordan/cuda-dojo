@@ -104,6 +104,53 @@
       }
     ]
   },
+  "expandedN64TrainedFfn": {
+    "condition": "Trained from N=64 family-dispatch depth3 filter-legal emit-all; configs=4 sims=4 timeoutMs=120000; then tested on offset-64 heldout runtime",
+    "totalGroups": 319,
+    "offlineFullTop1": 0.9780564263322884,
+    "offlineHoldoutTop1": 0.90625,
+    "trackedExportedPolicy": "fighter_accuracy/artifacts/ffn_policy_top32_n64_mixed_2026-05-04.json",
+    "trackedExportedPolicySha256": "6062de2d9a11f09b4fe33a41f5472822df00039049dcd5c75838e07fb34c6579",
+    "heldoutOffset64": {
+      "strictAverageAgreementRate": 0.725,
+      "ffnRuntimeProxyAverageAgreementRate": 0.64375,
+      "ffnRuntimeProxyLift": -0.08125,
+      "strictFailed": [
+        "Razor X"
+      ],
+      "ffnFailed": [
+        "Razor X"
+      ],
+      "comparablePositionsPerFighter": 64,
+      "perFighter": [
+        {
+          "name": "Razor X",
+          "strictAgreementRate": 0.40625,
+          "ffnProxyAgreementRate": 0.453125
+        },
+        {
+          "name": "Queensguard",
+          "strictAgreementRate": 0.765625,
+          "ffnProxyAgreementRate": 0.6875
+        },
+        {
+          "name": "Firebird",
+          "strictAgreementRate": 0.703125,
+          "ffnProxyAgreementRate": 0.5625
+        },
+        {
+          "name": "Fortress",
+          "strictAgreementRate": 0.78125,
+          "ffnProxyAgreementRate": 0.703125
+        },
+        {
+          "name": "RazorBlade II",
+          "strictAgreementRate": 0.96875,
+          "ffnProxyAgreementRate": 0.8125
+        }
+      ]
+    }
+  },
   "trainCount": 76,
   "holdoutCount": 19,
   "featureDim": 20,
@@ -114,5 +161,5 @@
   "weights": "runtime/reports/ffn_policy_latest.pt",
   "exportedPolicy": "runtime/reports/ffn_policy_latest.json",
   "trackedExportedPolicy": "fighter_accuracy/artifacts/ffn_policy_top32_n24_2026-05-04.json",
-  "interpretation": "FFN is useful as a learned residual policy over GPU root candidates and now has an opt-in runtime hook. The first N=24 and mixed N=64 gates show a proxy lift, but the offset-24 heldout gate regresses, so this is not promoted as a parity fix. This is not strict JS/Python fighter parity and must not be reported as a proof that the source fighter was exactly accelerated."
+  "interpretation": "FFN is useful as a learned residual policy over GPU root candidates and now has an opt-in runtime hook. The first N=24 and mixed N=64 gates show a proxy lift, but offset heldout gates regress, including the N=64-trained FFN on offset-64. This is not promoted as a parity fix. This is not strict JS/Python fighter parity and must not be reported as a proof that the source fighter was exactly accelerated."
 }

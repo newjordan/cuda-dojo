@@ -72,6 +72,10 @@ fresh-process fixes:
   family-dispatch is 87.2% and the tracked FFN proxy is 91.9%. On the heldout
   `--corpus-offset 24 --samples 64` surface, strict remains 87.2% and the FFN
   proxy drops to 83.1%, so the current FFN artifact is not promoted.
+- Training a second FFN on the expanded N=64 emit-all set reaches 97.8% offline
+  full-set top-1 and 90.6% offline holdout, but fails the offset-64 runtime
+  gate: strict is 72.5%, FFN proxy is 64.4%, and Razor X still fails. Naive FFN
+  reranking is therefore an ablation lane, not the current parity fix.
 
 Interpretation:
 
