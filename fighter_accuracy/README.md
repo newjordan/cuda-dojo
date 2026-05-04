@@ -43,6 +43,9 @@ fresh-process fixes:
 - `--gpu-family-dispatch --samples 24 --gpu-depth 3`: 5/5 pass by threshold,
   with actual agreement `[73.7, 57.9, 57.9, 57.9, 94.7]%`; RazorBlade II is
   still proxy-labeled.
+- Corrected N=24 ablations: `--gpu-root-order` drops average agreement to
+  61.1%, `--gpu-serial-root` stays at 68.4%, depth 2 drops to 58.9%, and depth
+  4 drops to 49.5%.
 - Traincar opening-book entries are now embedded in the tracked CUDA fighter
   blobs and loaded from the blob before the source-file fallback.
 

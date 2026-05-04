@@ -22,6 +22,8 @@
 - [x] Run N=24 family-dispatch gate; passes 5/5 by threshold but not 1:1.
 - [x] Test deeper GPU search as a Traincar parity lift; depth 8 regressed.
 - [x] Test the existing Traincar eval bridge under the corrected oracle; no lift.
+- [x] Re-test root-order, serial-root, and nearby depth ablations under the
+      corrected multi-fighter oracle.
 - [x] Promote Traincar book data into the CUDA fighter blob/IR instead of
       loading it from repo source at runtime.
 - [ ] Improve GPU fighter move parity against the CPU fighter.
