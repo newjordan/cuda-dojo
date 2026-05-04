@@ -29,9 +29,13 @@
 - [x] Add opt-in CPU-shaped CUDA search ablation; smoke regressed, not promoted.
 - [x] Add opt-in Traincar root tie-break ablation; smoke regressed, not promoted.
 - [x] Classify current N=4 Traincar disagreements by root cause.
+- [x] Add emit-all GPU root policy sample capture for FFN training.
+- [x] Add tiny learned FFN residual trainer and run N=24 policy ablation.
 - [ ] Improve GPU fighter move parity against the CPU fighter.
 - [ ] Implement source-family dispatch from CUDA fighter blob surfaces.
 - [ ] Implement deterministic CPU timeout/rootBestMove behavior without using the
       CPU move as an oracle.
 - [ ] Implement Traincar deterministic clock / iterative-root emulation on GPU.
+- [ ] Promote learned FFN residual into GPU runtime only after out-of-sample
+      validation beats the fixed-depth GPU policy.
 - [ ] Add throughput/concurrency curves only after the accuracy gate is honest.

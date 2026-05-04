@@ -11,7 +11,8 @@
     "accuracy:gpu-fighter-external-snapshot": "node fighter_accuracy/scripts/run_external_accuracy_gate.mjs --skip-run --expect-fail",
     "accuracy:gpu-fighter-baseline": "node scripts/run_cpu_gpu_accuracy_matrix.mjs --timeout-ms 300000",
     "accuracy:gpu-fighter-gate": "node scripts/run_cpu_gpu_accuracy_matrix.mjs --timeout-ms 300000",
-    "accuracy:trace-first": "node scripts/trace_first_disagreement.mjs"
+    "accuracy:trace-first": "node scripts/trace_first_disagreement.mjs",
+    "policy:ffn-train": "python3 scripts/train_fighter_policy_ffn.py"
   },
   "repository": {
     "type": "git",

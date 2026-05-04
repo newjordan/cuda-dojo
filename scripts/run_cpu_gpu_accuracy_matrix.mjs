@@ -36,6 +36,7 @@ function parseArgs(argv) {
     gpuTraincarRootTieBreak: false,
     gpuFamilyDispatch: false,
     gpuTimeoutRootProxy: false,
+    gpuEmitAll: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -57,6 +58,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-traincar-root-tiebreak') options.gpuTraincarRootTieBreak = true;
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
     else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
+    else if (arg === '--gpu-emit-all') options.gpuEmitAll = true;
   }
   return options;
 }
@@ -84,6 +86,7 @@ function runOne(entry, options) {
   if (options.gpuTraincarRootTieBreak) args.push('--gpu-traincar-root-tiebreak');
   if (options.gpuFamilyDispatch) args.push('--gpu-family-dispatch');
   if (options.gpuTimeoutRootProxy) args.push('--gpu-timeout-root-proxy');
+  if (options.gpuEmitAll) args.push('--gpu-emit-all');
 
   try {
     const raw = execFileSync(process.execPath, args, {

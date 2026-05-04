@@ -34,6 +34,7 @@ function parseArgs(argv) {
     gpuTraincarRootTieBreak: false,
     gpuFamilyDispatch: false,
     gpuTimeoutRootProxy: false,
+    gpuEmitAll: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -58,6 +59,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-traincar-root-tiebreak') options.gpuTraincarRootTieBreak = true;
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
     else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
+    else if (arg === '--gpu-emit-all') options.gpuEmitAll = true;
   }
 
   if (!options.fighter) {
@@ -198,7 +200,7 @@ function buildCpuInputLines(fighterPath, fens) {
   return { usable, skipped, input };
 }
 
-function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal, gpuTraincarEval, gpuCpuShapedSearch, gpuTraincarBook, gpuSerialRoot, gpuRootOrder, gpuTraincarRootTieBreak, gpuFamilyDispatch, gpuTimeoutRootProxy) {
+function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal, gpuTraincarEval, gpuCpuShapedSearch, gpuTraincarBook, gpuSerialRoot, gpuRootOrder, gpuTraincarRootTieBreak, gpuFamilyDispatch, gpuTimeoutRootProxy, gpuEmitAll) {
   if (!existsSync(GPU_FORGE_BIN)) throw new Error(`Missing gpu_forge binary: ${GPU_FORGE_BIN}`);
   if (!existsSync(blobPath)) throw new Error(`Missing fighter blob: ${blobPath}`);
   const forgeArgs = [String(configs), String(sims), '--fighter-blob', blobPath];
@@ -213,6 +215,7 @@ function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFul
   if (gpuTraincarRootTieBreak) forgeArgs.push('--traincar-root-tiebreak');
   if (gpuFamilyDispatch) forgeArgs.push('--family-dispatch');
   if (gpuTimeoutRootProxy) forgeArgs.push('--timeout-root-proxy');
+  if (gpuEmitAll) forgeArgs.push('--emit-all');
   const command = timeoutMs > 0
     ? ['timeout', '--kill-after=10s', `${Math.ceil(timeoutMs / 1000)}s`, GPU_FORGE_BIN, ...forgeArgs]
     : [GPU_FORGE_BIN, ...forgeArgs];
@@ -253,7 +256,7 @@ function main() {
 
   const corpus = buildCorpus(options.samples);
   const { usable, skipped, input } = buildCpuInputLines(fighterPath, corpus);
-  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuCpuShapedSearch, options.gpuTraincarBook, options.gpuSerialRoot, options.gpuRootOrder, options.gpuTraincarRootTieBreak, options.gpuFamilyDispatch, options.gpuTimeoutRootProxy);
+  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuCpuShapedSearch, options.gpuTraincarBook, options.gpuSerialRoot, options.gpuRootOrder, options.gpuTraincarRootTieBreak, options.gpuFamilyDispatch, options.gpuTimeoutRootProxy, options.gpuEmitAll);
   const summary = gpu.summary || {};
   const gpuTags = [summary.timeoutRootProxy ? 'proxy' : 'strict'];
   if (summary.traincarBook) gpuTags.push('traincar_book');
@@ -303,6 +306,7 @@ function main() {
       gpuTraincarRootTieBreak: options.gpuTraincarRootTieBreak,
       gpuFamilyDispatch: options.gpuFamilyDispatch,
       gpuTimeoutRootProxy: options.gpuTimeoutRootProxy,
+      gpuEmitAll: options.gpuEmitAll,
     },
     corpus: {
       size: corpus.length,
@@ -333,10 +337,12 @@ function main() {
       traincarBookEntries: Number(summary.traincarBookEntries || 0),
       traincarBookOverrides: Number(summary.traincarBookOverrides || 0),
       traincarBookMisses: Number(summary.traincarBookMisses || 0),
+      emitAllPositions: Boolean(summary.emitAllPositions),
       skippedNoMoves: Number(summary.skippedNoMoves || 0),
       skippedEngineMoveMissing: Number(summary.skippedEngineMoveMissing || 0),
     },
     sampleDisagreements: Array.isArray(gpu.positions) ? gpu.positions.slice(0, 10) : [],
+    policySamples: options.gpuEmitAll && Array.isArray(gpu.positions) ? gpu.positions : [],
     skippedCpuSample: skipped.slice(0, 10),
     failures,
     warnings,
@@ -367,6 +373,7 @@ function main() {
     cpuShapedSearch: report.gpuSummary.cpuShapedSearch,
     traincarRootTieBreak: report.gpuSummary.traincarRootTieBreak,
     traincarBookOverrides: report.gpuSummary.traincarBookOverrides,
+    emitAllPositions: report.gpuSummary.emitAllPositions,
     condition: report.condition,
     failures: report.failures,
     warnings: report.warnings,

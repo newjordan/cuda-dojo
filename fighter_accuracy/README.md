@@ -57,6 +57,11 @@ fresh-process fixes:
   2 tie/root-order cases, 1 deterministic CPU partial-timeout/rootBestMove case,
   and 1 eval/search case. The next real target is deterministic CPU clock /
   iterative-root emulation on GPU, not another fixed-depth search tweak.
+- FFN is now a separate learned residual lane, not a strict parity claim.
+  `--gpu-emit-all` records root-candidate policy samples for every comparable
+  position, and `npm run policy:ffn-train` trains a tiny candidate scorer. On
+  the N=24 family-dispatch emit-all set, GPU top-1 is 68.4%, the FFN residual is
+  90.5% on the full labeled set and 78.9% on holdout.
 
 Interpretation:
 

@@ -1,0 +1,17 @@
+{
+  "label": "learned_ffn_residual_not_strict_js_parity",
+  "condition": "N=24 family-dispatch depth3 filter-legal emit-all; configs=4 sims=4 timeoutMs=120000",
+  "totalGroups": 95,
+  "gpuTop1": 0.6842105263157895,
+  "ffnFullTop1": 0.9052631578947369,
+  "ffnHoldoutTop1": 0.7894736842105263,
+  "trainCount": 76,
+  "holdoutCount": 19,
+  "featureDim": 20,
+  "epochs": 250,
+  "seed": 20260504,
+  "device": "cuda",
+  "artifact": "runtime/reports/ffn_policy_eval_latest.json",
+  "weights": "runtime/reports/ffn_policy_latest.pt",
+  "interpretation": "FFN is useful as a learned residual policy over GPU root candidates. This is not strict JS/Python fighter parity and must not be reported as a proof that the source fighter was exactly accelerated."
+}

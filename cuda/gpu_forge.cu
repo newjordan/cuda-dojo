@@ -419,6 +419,34 @@ static void printRootCandidatesJson(Move* moves, float* scores, int count, int e
   printf("]");
 }
 
+static void printPositionComparisonJson(
+  const char* fen,
+  const char* engineMove,
+  const char* searchMove,
+  float bestScore,
+  float engineScore,
+  int engineRank,
+  int legalCount,
+  int fixable,
+  int numConfigs,
+  Move* moves,
+  float* scores,
+  int engIdx,
+  int bestIdx,
+  int topN,
+  bool agree
+) {
+  printf("{\"fen\":\"%s\",\"engine\":\"%s\",\"mcts\":\"%s\",\"agree\":%s,\"mcts_wr\":%.3f,"
+         "\"engine_score\":%.3f,\"gpu_score\":%.3f,\"score_delta\":%.3f,"
+         "\"engine_rank\":%d,\"legal_count\":%d,\"fixable\":%d,\"rate\":%.3f,"
+         "\"gpu_root\":",
+    fen, engineMove, searchMove, agree ? "true" : "false", bestScore / 100.0f,
+    engineScore / 100.0f, bestScore / 100.0f, (bestScore - engineScore) / 100.0f,
+    engineRank, legalCount, fixable, numConfigs > 0 ? (float)fixable / numConfigs : 0.0f);
+  printRootCandidatesJson(moves, scores, legalCount, engIdx, bestIdx, topN);
+  printf("}");
+}
+
 // ============================================================================
 // HOST: Runtime fighter blob loader
 // ============================================================================
@@ -1937,6 +1965,7 @@ int main(int argc, char** argv) {
   int familyDispatch = 0;
   int timeoutRootProxy = 0;
   int traincarBook = 0;
+  int emitAllPositions = 0;
   const char* traincarBookPath = "frostd4d/variants/the_un.js";
   int positional = 0;
   for (int i = 1; i < argc; i++) {
@@ -1989,6 +2018,10 @@ int main(int argc, char** argv) {
     }
     if (strcmp(argv[i], "--traincar-book") == 0) {
       traincarBook = 1;
+      continue;
+    }
+    if (strcmp(argv[i], "--emit-all") == 0) {
+      emitAllPositions = 1;
       continue;
     }
     if (argv[i][0] == '-') continue;
@@ -2049,6 +2082,7 @@ int main(int argc, char** argv) {
   if (familyDispatch) fprintf(stderr, "[dojo] source-family dispatch: enabled\n");
   if (timeoutRootProxy) fprintf(stderr, "[dojo] timeout root proxy: enabled\n");
   if (traincarBook) fprintf(stderr, "[dojo] traincar book: enabled (%d entries)\n", traincarBookCount);
+  if (emitAllPositions) fprintf(stderr, "[dojo] emit-all positions: enabled\n");
 
   // Upload fighter knobs to constant memory for search evaluation
   cudaMemcpyToSymbol(C_FIGHTER_KNOBS, defaults, KNOB_COUNT * sizeof(float));
@@ -2261,7 +2295,17 @@ int main(int argc, char** argv) {
     comparablePositions++;
 
     // Check agreement
-    if (strcmp(searchMove, engineMove) == 0) { agreements++; continue; }
+    if (strcmp(searchMove, engineMove) == 0) {
+      agreements++;
+      if (emitAllPositions) {
+        if (!first) printf(",\n");
+        first = 0;
+        printPositionComparisonJson(
+          fen, engineMove, searchMove, bestScore, h_searchScores[engIdx],
+          1, numMoves, 0, numConfigs, h_moves, h_searchScores, engIdx, bestIdx, 32, true);
+      }
+      continue;
+    }
 
     totalPos++;
     float engineScore = h_searchScores[engIdx];
@@ -2310,15 +2354,10 @@ int main(int argc, char** argv) {
 
     if (!first) printf(",\n");
     first = 0;
-    printf("{\"fen\":\"%s\",\"engine\":\"%s\",\"mcts\":\"%s\",\"mcts_wr\":%.3f,"
-           "\"engine_score\":%.3f,\"gpu_score\":%.3f,\"score_delta\":%.3f,"
-           "\"engine_rank\":%d,\"legal_count\":%d,\"fixable\":%d,\"rate\":%.3f,"
-           "\"gpu_root\":",
-      fen, engineMove, searchMove, bestScore / 100.0f,
-      engineScore / 100.0f, bestScore / 100.0f, (bestScore - engineScore) / 100.0f,
-      engineRank, numMoves, fixable, (float)fixable/numConfigs);
-    printRootCandidatesJson(h_moves, h_searchScores, numMoves, engIdx, bestIdx, 8);
-    printf("}");
+    printPositionComparisonJson(
+      fen, engineMove, searchMove, bestScore, engineScore, engineRank, numMoves,
+      fixable, numConfigs, h_moves, h_searchScores, engIdx, bestIdx,
+      emitAllPositions ? 32 : 8, false);
 
     cudaFree(d_bA); cudaFree(d_bB);
   }
@@ -2346,6 +2385,7 @@ int main(int argc, char** argv) {
     timeoutRootProxy ? "true" : "false",
     cpuShapedSearch ? "true" : "false",
     traincarRootTieBreak ? "true" : "false");
+  printf("\"emitAllPositions\":%s,", emitAllPositions ? "true" : "false");
   printf("\"traincarBook\":%s,\"traincarBookEntries\":%d,\"traincarBookOverrides\":%d,\"traincarBookMisses\":%d,",
     traincarBook ? "true" : "false",
     traincarBookCount,

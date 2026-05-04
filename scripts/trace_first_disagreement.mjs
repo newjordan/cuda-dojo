@@ -28,6 +28,7 @@ function parseArgs(argv) {
     gpuTraincarRootTieBreak: false,
     gpuFamilyDispatch: false,
     gpuTimeoutRootProxy: false,
+    gpuEmitAll: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -51,6 +52,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-traincar-root-tiebreak') options.gpuTraincarRootTieBreak = true;
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
     else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
+    else if (arg === '--gpu-emit-all') options.gpuEmitAll = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
 
@@ -117,6 +119,7 @@ function runGpuTrace(options, fighterBlob, fen, cpuMove, legalMoves) {
   if (options.gpuTraincarRootTieBreak) forgeArgs.push('--traincar-root-tiebreak');
   if (options.gpuFamilyDispatch) forgeArgs.push('--family-dispatch');
   if (options.gpuTimeoutRootProxy) forgeArgs.push('--timeout-root-proxy');
+  if (options.gpuEmitAll) forgeArgs.push('--emit-all');
   const command = options.timeoutMs > 0
     ? ['timeout', '--kill-after=10s', `${Math.ceil(options.timeoutMs / 1000)}s`, GPU_FORGE_BIN, ...forgeArgs]
     : [GPU_FORGE_BIN, ...forgeArgs];
@@ -230,6 +233,7 @@ function main() {
       gpuTraincarRootTieBreak: options.gpuTraincarRootTieBreak,
       gpuFamilyDispatch: options.gpuFamilyDispatch,
       gpuTimeoutRootProxy: options.gpuTimeoutRootProxy,
+      gpuEmitAll: options.gpuEmitAll,
     },
     cpu,
     gpu: {
