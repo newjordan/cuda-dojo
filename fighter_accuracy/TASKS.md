@@ -16,6 +16,7 @@
 - [x] Fix the CPU harness `currentFen` path so the oracle matches standalone
       fighter book/briefing behavior.
 - [x] Add an opt-in Traincar book lookup ablation for the GPU comparator.
+- [x] Validate mixed family dispatch: Traincar book plus RazorBlade II proxy.
 - [ ] Improve GPU fighter move parity against the CPU fighter.
 - [ ] Promote Traincar book data into the CUDA fighter blob/IR instead of
       loading it from repo source at runtime.

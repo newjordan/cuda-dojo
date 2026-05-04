@@ -32,6 +32,8 @@ Current local working condition after the CPU harness `currentFen` fix:
 - `standalone_current_fen+strict`: 0/5 pass on the 4-sample smoke.
 - `standalone_current_fen+strict_traincar_book`: 2/5 pass on the 4-sample
   smoke, with Razor X and Fortress passing.
+- `--gpu-family-dispatch`: 3/5 pass on the 4-sample smoke; RazorBlade II is a
+  proxy pass, not strict parity.
 
 Interpretation:
 
