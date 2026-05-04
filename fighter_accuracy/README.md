@@ -40,6 +40,9 @@ fresh-process fixes:
 - `--gpu-family-dispatch --samples 8 --gpu-depth 8`: 0/5 pass, so increasing
   GPU search depth alone is not a parity fix.
 - Adding `--gpu-traincar-eval` to the 8-sample family-dispatch run stays 3/5.
+- `--gpu-family-dispatch --samples 24 --gpu-depth 3`: 5/5 pass by threshold,
+  with actual agreement `[73.7, 57.9, 57.9, 57.9, 94.7]%`; RazorBlade II is
+  still proxy-labeled.
 - Traincar opening-book entries are now embedded in the tracked CUDA fighter
   blobs and loaded from the blob before the source-file fallback.
 

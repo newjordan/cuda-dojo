@@ -19,6 +19,7 @@
       fighter instance.
 - [x] Add an opt-in Traincar book lookup ablation for the GPU comparator.
 - [x] Validate mixed family dispatch: Traincar book plus RazorBlade II proxy.
+- [x] Run N=24 family-dispatch gate; passes 5/5 by threshold but not 1:1.
 - [x] Test deeper GPU search as a Traincar parity lift; depth 8 regressed.
 - [x] Test the existing Traincar eval bridge under the corrected oracle; no lift.
 - [x] Promote Traincar book data into the CUDA fighter blob/IR instead of
