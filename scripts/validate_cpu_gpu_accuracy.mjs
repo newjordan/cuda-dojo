@@ -17,6 +17,7 @@ function parseArgs(argv) {
     fighter: '',
     fighterBlob: '',
     samples: 24,
+    corpusOffset: 0,
     configs: 16,
     sims: 8,
     minAccuracy: 0.65,
@@ -42,6 +43,7 @@ function parseArgs(argv) {
     if (arg === '--fighter') options.fighter = argv[++i] || '';
     else if (arg === '--fighter-blob') options.fighterBlob = argv[++i] || '';
     else if (arg === '--samples') options.samples = Math.max(4, Number(argv[++i] || options.samples));
+    else if (arg === '--corpus-offset') options.corpusOffset = Math.max(0, Number(argv[++i] || options.corpusOffset));
     else if (arg === '--configs') options.configs = Math.max(4, Number(argv[++i] || options.configs));
     else if (arg === '--sims') options.sims = Math.max(4, Number(argv[++i] || options.sims));
     else if (arg === '--min-accuracy') options.minAccuracy = Number(argv[++i] || options.minAccuracy);
@@ -65,13 +67,22 @@ function parseArgs(argv) {
   }
 
   if (!options.fighter) {
-    throw new Error('Usage: node scripts/validate_cpu_gpu_accuracy.mjs --fighter variants/<name>.js [--fighter-blob path] [--samples N] [--configs N] [--sims N] [--min-accuracy R] [--min-coverage R] [--slug id]');
+    throw new Error('Usage: node scripts/validate_cpu_gpu_accuracy.mjs --fighter variants/<name>.js [--fighter-blob path] [--samples N] [--corpus-offset N] [--configs N] [--sims N] [--min-accuracy R] [--min-coverage R] [--slug id]');
   }
   return options;
 }
 
 function normalizeFen(fen) {
   return String(fen || '').trim().replace(/\s+/g, ' ');
+}
+
+function completeFen(fen) {
+  const parts = normalizeFen(fen).split(/\s+/).filter(Boolean);
+  if (parts.length === 2) return `${parts.join(' ')} - - 0 1`;
+  if (parts.length === 3) return `${parts.join(' ')} - 0 1`;
+  if (parts.length === 4) return `${parts.join(' ')} 0 1`;
+  if (parts.length === 5) return `${parts.join(' ')} 1`;
+  return parts.join(' ');
 }
 
 function collectBatchFens(limit = 12) {
@@ -122,11 +133,67 @@ function collectLozzaBenchFens(limit = 12) {
   return out;
 }
 
-function buildCorpus(maxSamples) {
+function collectGpuSpineBookFens(limit = 256) {
+  const path = join(REPO_ROOT, 'gpu_spine', 'book.jsonl');
+  if (!existsSync(path)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line);
+      if (!row.fen || row.sf_bestmove === '(none)') continue;
+      const fen = completeFen(row.fen);
+      if (seen.has(fen)) continue;
+      const pos = parseFen(fen);
+      if (pos.board.length !== 64 || generateLegalMoves(pos).length === 0) continue;
+      seen.add(fen);
+      out.push(fen);
+      if (out.length >= limit) return out;
+    } catch {
+      continue;
+    }
+  }
+  return out;
+}
+
+function collectVariantBookFens(limit = 256) {
+  const dir = join(REPO_ROOT, 'variants');
+  if (!existsSync(dir)) return [];
+  const files = readdirSync(dir)
+    .filter((name) => name.endsWith('.js') || name.endsWith('.src.js'))
+    .sort();
+  const out = [];
+  const seen = new Set();
+  const add = (fen) => {
+    const n = completeFen(fen);
+    if (!n.includes('/') || seen.has(n)) return;
+    try {
+      const pos = parseFen(n);
+      if (pos.board.length !== 64 || generateLegalMoves(pos).length === 0) return;
+    } catch {
+      return;
+    }
+    seen.add(n);
+    out.push(n);
+  };
+  for (const file of files) {
+    const raw = readFileSync(join(dir, file), 'utf8');
+    const regex = /\bB\(\s*["']([^"']+\/[^"']+)["']\s*,/g;
+    let match;
+    while ((match = regex.exec(raw))) {
+      add(match[1]);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+
+function buildCorpus(maxSamples, offset = 0) {
   const seen = new Set();
   const out = [];
   const add = (fen) => {
-    const n = normalizeFen(fen);
+    const n = completeFen(fen);
     if (!n || seen.has(n)) return;
     seen.add(n);
     out.push(n);
@@ -134,7 +201,9 @@ function buildCorpus(maxSamples) {
   add(START_FEN);
   for (const fen of collectBatchFens()) add(fen);
   for (const fen of collectLozzaBenchFens()) add(fen);
-  return out.slice(0, maxSamples);
+  for (const fen of collectGpuSpineBookFens()) add(fen);
+  for (const fen of collectVariantBookFens()) add(fen);
+  return out.slice(offset, offset + maxSamples);
 }
 
 function deriveBlobPath(fighterPath, explicitBlob) {
@@ -257,7 +326,7 @@ function main() {
   const fighterBlob = resolve(REPO_ROOT, deriveBlobPath(fighterPath, options.fighterBlob));
   const slug = options.slug || basename(fighterPath).replace(/\.js$/, '');
 
-  const corpus = buildCorpus(options.samples);
+  const corpus = buildCorpus(options.samples, options.corpusOffset);
   const { usable, skipped, input } = buildCpuInputLines(fighterPath, corpus);
   const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuCpuShapedSearch, options.gpuTraincarBook, options.gpuSerialRoot, options.gpuRootOrder, options.gpuTraincarRootTieBreak, options.gpuFamilyDispatch, options.gpuTimeoutRootProxy, options.gpuEmitAll, options.gpuFfnPolicy);
   const summary = gpu.summary || {};
@@ -295,6 +364,7 @@ function main() {
     fighterBlob,
     options: {
       samples: options.samples,
+      corpusOffset: options.corpusOffset,
       configs: options.configs,
       sims: options.sims,
       minAccuracy: options.minAccuracy,

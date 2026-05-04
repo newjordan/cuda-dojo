@@ -32,6 +32,9 @@
 - [x] Add emit-all GPU root policy sample capture for FFN training.
 - [x] Add tiny learned FFN residual trainer and run N=24 policy ablation.
 - [x] Add opt-in runtime FFN residual hook and validate N=24 proxy lift.
+- [x] Expand larger validation gates with tracked `gpu_spine/book.jsonl` FENs.
+- [x] Add `--corpus-offset` and run heldout N=64 FFN validation; current FFN
+      regresses on heldout, so it is not promoted.
 - [ ] Improve GPU fighter move parity against the CPU fighter.
 - [ ] Implement source-family dispatch from CUDA fighter blob surfaces.
 - [ ] Implement deterministic CPU timeout/rootBestMove behavior without using the

@@ -20,6 +20,7 @@ const FIGHTERS = [
 function parseArgs(argv) {
   const options = {
     samples: 24,
+    corpusOffset: 0,
     configs: 16,
     sims: 8,
     minAccuracy: 0.55,
@@ -42,6 +43,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--samples') options.samples = Math.max(4, Number(argv[++i] || options.samples));
+    else if (arg === '--corpus-offset') options.corpusOffset = Math.max(0, Number(argv[++i] || options.corpusOffset));
     else if (arg === '--configs') options.configs = Math.max(4, Number(argv[++i] || options.configs));
     else if (arg === '--sims') options.sims = Math.max(4, Number(argv[++i] || options.sims));
     else if (arg === '--min-accuracy') options.minAccuracy = Number(argv[++i] || options.minAccuracy);
@@ -70,6 +72,7 @@ function runOne(entry, options) {
     VALIDATOR,
     '--fighter', entry.fighter,
     '--samples', String(options.samples),
+    '--corpus-offset', String(options.corpusOffset),
     '--configs', String(options.configs),
     '--sims', String(options.sims),
     '--min-accuracy', String(options.minAccuracy),

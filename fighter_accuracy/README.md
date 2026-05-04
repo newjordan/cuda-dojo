@@ -67,6 +67,11 @@ fresh-process fixes:
   family-dispatch gate it raises runtime proxy agreement to 89.5% average
   across five fighters, with 0/5 exact and 5/5 proxy-labeled. This is a policy
   proxy condition, not strict JS/Python parity.
+- Larger gates now pull additional legal FENs from `gpu_spine/book.jsonl`,
+  followed by variant-book fallback FENs. On the mixed N=64 surface, strict
+  family-dispatch is 87.2% and the tracked FFN proxy is 91.9%. On the heldout
+  `--corpus-offset 24 --samples 64` surface, strict remains 87.2% and the FFN
+  proxy drops to 83.1%, so the current FFN artifact is not promoted.
 
 Interpretation:
 
@@ -111,6 +116,7 @@ Train and test the learned FFN residual proxy:
 npm run accuracy:gpu-fighter-baseline -- --samples 24 --configs 4 --sims 4 --timeout-ms 120000 --gpu-depth 3 --gpu-filter-legal --gpu-family-dispatch --gpu-emit-all
 npm run policy:ffn-train -- --epochs 250
 npm run accuracy:gpu-fighter-baseline -- --samples 24 --configs 4 --sims 4 --timeout-ms 120000 --gpu-depth 3 --gpu-filter-legal --gpu-family-dispatch --gpu-ffn-policy fighter_accuracy/artifacts/ffn_policy_top32_n24_2026-05-04.json
+npm run accuracy:gpu-fighter-baseline -- --samples 64 --corpus-offset 24 --configs 4 --sims 4 --timeout-ms 120000 --gpu-depth 3 --gpu-filter-legal --gpu-family-dispatch --gpu-ffn-policy fighter_accuracy/artifacts/ffn_policy_top32_n24_2026-05-04.json
 ```
 
 The external bridge commands write a receipt under `fighter_accuracy/receipts/`

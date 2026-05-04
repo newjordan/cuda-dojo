@@ -36,6 +36,74 @@
       "ffnPolicyOverrides": 1
     }
   ],
+  "expandedCorpusN64": {
+    "condition": "N=64 family-dispatch depth3 filter-legal; configs=4 sims=4 timeoutMs=120000; corpus uses the original baseline surface plus gpu_spine/book.jsonl before variant-book fallback",
+    "strictAverageAgreementRate": 0.871875,
+    "ffnRuntimeProxyAverageAgreementRate": 0.91875,
+    "ffnRuntimeProxyLift": 0.046875,
+    "comparablePositionsPerFighter": 64,
+    "perFighter": [
+      {
+        "name": "Razor X",
+        "strictAgreementRate": 0.875,
+        "ffnProxyAgreementRate": 0.890625
+      },
+      {
+        "name": "Queensguard",
+        "strictAgreementRate": 0.84375,
+        "ffnProxyAgreementRate": 0.9375
+      },
+      {
+        "name": "Firebird",
+        "strictAgreementRate": 0.84375,
+        "ffnProxyAgreementRate": 0.9375
+      },
+      {
+        "name": "Fortress",
+        "strictAgreementRate": 0.84375,
+        "ffnProxyAgreementRate": 0.953125
+      },
+      {
+        "name": "RazorBlade II",
+        "strictAgreementRate": 0.953125,
+        "ffnProxyAgreementRate": 0.875
+      }
+    ]
+  },
+  "heldoutCorpusOffset24N64": {
+    "condition": "N=64 family-dispatch depth3 filter-legal corpus-offset=24; configs=4 sims=4 timeoutMs=120000; excludes the original N=24 training/eval surface",
+    "strictAverageAgreementRate": 0.871875,
+    "ffnRuntimeProxyAverageAgreementRate": 0.83125,
+    "ffnRuntimeProxyLift": -0.040625,
+    "comparablePositionsPerFighter": 64,
+    "perFighter": [
+      {
+        "name": "Razor X",
+        "strictAgreementRate": 0.75,
+        "ffnProxyAgreementRate": 0.703125
+      },
+      {
+        "name": "Queensguard",
+        "strictAgreementRate": 0.890625,
+        "ffnProxyAgreementRate": 0.890625
+      },
+      {
+        "name": "Firebird",
+        "strictAgreementRate": 0.875,
+        "ffnProxyAgreementRate": 0.84375
+      },
+      {
+        "name": "Fortress",
+        "strictAgreementRate": 0.890625,
+        "ffnProxyAgreementRate": 0.875
+      },
+      {
+        "name": "RazorBlade II",
+        "strictAgreementRate": 0.953125,
+        "ffnProxyAgreementRate": 0.84375
+      }
+    ]
+  },
   "trainCount": 76,
   "holdoutCount": 19,
   "featureDim": 20,
@@ -46,5 +114,5 @@
   "weights": "runtime/reports/ffn_policy_latest.pt",
   "exportedPolicy": "runtime/reports/ffn_policy_latest.json",
   "trackedExportedPolicy": "fighter_accuracy/artifacts/ffn_policy_top32_n24_2026-05-04.json",
-  "interpretation": "FFN is useful as a learned residual policy over GPU root candidates and now has an opt-in runtime hook. This is not strict JS/Python fighter parity and must not be reported as a proof that the source fighter was exactly accelerated."
+  "interpretation": "FFN is useful as a learned residual policy over GPU root candidates and now has an opt-in runtime hook. The first N=24 and mixed N=64 gates show a proxy lift, but the offset-24 heldout gate regresses, so this is not promoted as a parity fix. This is not strict JS/Python fighter parity and must not be reported as a proof that the source fighter was exactly accelerated."
 }
