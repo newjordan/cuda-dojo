@@ -26,8 +26,12 @@
       corrected multi-fighter oracle.
 - [x] Promote Traincar book data into the CUDA fighter blob/IR instead of
       loading it from repo source at runtime.
+- [x] Add opt-in CPU-shaped CUDA search ablation; smoke regressed, not promoted.
+- [x] Add opt-in Traincar root tie-break ablation; smoke regressed, not promoted.
+- [x] Classify current N=4 Traincar disagreements by root cause.
 - [ ] Improve GPU fighter move parity against the CPU fighter.
 - [ ] Implement source-family dispatch from CUDA fighter blob surfaces.
 - [ ] Implement deterministic CPU timeout/rootBestMove behavior without using the
       CPU move as an oracle.
+- [ ] Implement Traincar deterministic clock / iterative-root emulation on GPU.
 - [ ] Add throughput/concurrency curves only after the accuracy gate is honest.

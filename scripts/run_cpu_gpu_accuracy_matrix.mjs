@@ -29,9 +29,11 @@ function parseArgs(argv) {
     gpuFullQeval: false,
     gpuFilterLegal: false,
     gpuTraincarEval: false,
+    gpuCpuShapedSearch: false,
     gpuTraincarBook: false,
     gpuSerialRoot: false,
     gpuRootOrder: false,
+    gpuTraincarRootTieBreak: false,
     gpuFamilyDispatch: false,
     gpuTimeoutRootProxy: false,
   };
@@ -48,9 +50,11 @@ function parseArgs(argv) {
     else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
     else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
+    else if (arg === '--gpu-cpu-shaped-search') options.gpuCpuShapedSearch = true;
     else if (arg === '--gpu-traincar-book') options.gpuTraincarBook = true;
     else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
     else if (arg === '--gpu-root-order') options.gpuRootOrder = true;
+    else if (arg === '--gpu-traincar-root-tiebreak') options.gpuTraincarRootTieBreak = true;
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
     else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
   }
@@ -73,9 +77,11 @@ function runOne(entry, options) {
   if (options.gpuFullQeval) args.push('--gpu-full-qeval');
   if (options.gpuFilterLegal) args.push('--gpu-filter-legal');
   if (options.gpuTraincarEval) args.push('--gpu-traincar-eval');
+  if (options.gpuCpuShapedSearch) args.push('--gpu-cpu-shaped-search');
   if (options.gpuTraincarBook) args.push('--gpu-traincar-book');
   if (options.gpuSerialRoot) args.push('--gpu-serial-root');
   if (options.gpuRootOrder) args.push('--gpu-root-order');
+  if (options.gpuTraincarRootTieBreak) args.push('--gpu-traincar-root-tiebreak');
   if (options.gpuFamilyDispatch) args.push('--gpu-family-dispatch');
   if (options.gpuTimeoutRootProxy) args.push('--gpu-timeout-root-proxy');
 

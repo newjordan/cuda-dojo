@@ -48,6 +48,15 @@ fresh-process fixes:
   4 drops to 49.5%.
 - Traincar opening-book entries are now embedded in the tracked CUDA fighter
   blobs and loaded from the blob before the source-file fallback.
+- Opt-in `--gpu-cpu-shaped-search` was added as a CUDA search-shape ablation,
+  but is not promoted: N=4 family-dispatch smoke peaked at 70.0% at depth 2 and
+  regressed to 65.0% at depth 3.
+- Opt-in `--gpu-traincar-root-tiebreak` was added as a Traincar root-order
+  ablation, but is not promoted: N=4 family-dispatch depth 3 dropped to 55.0%.
+- Current fixed N=4 Traincar-family disagreement classification: 0 book misses,
+  2 tie/root-order cases, 1 deterministic CPU partial-timeout/rootBestMove case,
+  and 1 eval/search case. The next real target is deterministic CPU clock /
+  iterative-root emulation on GPU, not another fixed-depth search tweak.
 
 Interpretation:
 

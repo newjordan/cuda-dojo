@@ -21,9 +21,11 @@ function parseArgs(argv) {
     gpuFullQeval: false,
     gpuFilterLegal: false,
     gpuTraincarEval: false,
+    gpuCpuShapedSearch: false,
     gpuTraincarBook: false,
     gpuSerialRoot: false,
     gpuRootOrder: false,
+    gpuTraincarRootTieBreak: false,
     gpuFamilyDispatch: false,
     gpuTimeoutRootProxy: false,
   };
@@ -42,9 +44,11 @@ function parseArgs(argv) {
     else if (arg === '--gpu-full-qeval') options.gpuFullQeval = true;
     else if (arg === '--gpu-filter-legal') options.gpuFilterLegal = true;
     else if (arg === '--gpu-traincar-eval') options.gpuTraincarEval = true;
+    else if (arg === '--gpu-cpu-shaped-search') options.gpuCpuShapedSearch = true;
     else if (arg === '--gpu-traincar-book') options.gpuTraincarBook = true;
     else if (arg === '--gpu-serial-root') options.gpuSerialRoot = true;
     else if (arg === '--gpu-root-order') options.gpuRootOrder = true;
+    else if (arg === '--gpu-traincar-root-tiebreak') options.gpuTraincarRootTieBreak = true;
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
     else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
     else throw new Error(`Unknown argument: ${arg}`);
@@ -106,9 +110,11 @@ function runGpuTrace(options, fighterBlob, fen, cpuMove, legalMoves) {
   if (options.gpuFullQeval) forgeArgs.push('--full-qeval');
   if (options.gpuFilterLegal) forgeArgs.push('--filter-legal');
   if (options.gpuTraincarEval) forgeArgs.push('--traincar-eval');
+  if (options.gpuCpuShapedSearch) forgeArgs.push('--cpu-shaped-search');
   if (options.gpuTraincarBook) forgeArgs.push('--traincar-book');
   if (options.gpuSerialRoot) forgeArgs.push('--serial-root');
   if (options.gpuRootOrder) forgeArgs.push('--root-order');
+  if (options.gpuTraincarRootTieBreak) forgeArgs.push('--traincar-root-tiebreak');
   if (options.gpuFamilyDispatch) forgeArgs.push('--family-dispatch');
   if (options.gpuTimeoutRootProxy) forgeArgs.push('--timeout-root-proxy');
   const command = options.timeoutMs > 0
@@ -217,9 +223,11 @@ function main() {
       gpuFullQeval: options.gpuFullQeval,
       gpuFilterLegal: options.gpuFilterLegal,
       gpuTraincarEval: options.gpuTraincarEval,
+      gpuCpuShapedSearch: options.gpuCpuShapedSearch,
       gpuTraincarBook: options.gpuTraincarBook,
       gpuSerialRoot: options.gpuSerialRoot,
       gpuRootOrder: options.gpuRootOrder,
+      gpuTraincarRootTieBreak: options.gpuTraincarRootTieBreak,
       gpuFamilyDispatch: options.gpuFamilyDispatch,
       gpuTimeoutRootProxy: options.gpuTimeoutRootProxy,
     },

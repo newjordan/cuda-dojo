@@ -203,6 +203,7 @@ __constant__ float C_FLAT_KNOBS[64];
 __constant__ int C_FULL_QEVAL;
 __constant__ int C_FILTER_LEGAL;
 __constant__ int C_TRAINCAR_EVAL;
+__constant__ int C_CPU_SHAPED_SEARCH;
 
 // ============================================================================
 // DATA STRUCTURES
@@ -344,6 +345,33 @@ static int hostRootMoveScore(const Board* board, const Move* move) {
   if (captured) return 1000000 + ((captured & 7) * 100) - movingType;
 
   return 0;
+}
+
+static int hostTraincarRootTieScore(const Board* board, const Move* move) {
+  int moving = board->pieces[move->from];
+  if (!moving) return 0;
+  int movingType = moving & 7;
+  int fromRank = move->from / 8;
+  int fromFile = move->from % 8;
+  int toRank = move->to / 8;
+  int toFile = move->to % 8;
+  int score = hostRootMoveScore(board, move);
+
+  if (movingType == KNIGHT) {
+    if ((fromRank == 7 || fromRank == 0) && (toFile == 2 || toFile == 5)) score += 700;
+    if (toFile == 0 || toFile == 7) score -= 250;
+    if (toRank >= 2 && toRank <= 5 && toFile >= 2 && toFile <= 5) score += 120;
+  } else if (movingType == BISHOP) {
+    if ((fromFile == 2 && toFile == 1) || (fromFile == 5 && toFile == 6)) score += 520;
+    if (toRank >= 2 && toRank <= 5 && toFile >= 2 && toFile <= 5) score += 100;
+  } else if (movingType == PAWN) {
+    int advance = move->from > move->to ? move->from - move->to : move->to - move->from;
+    if (toFile == 3 || toFile == 4) score += advance == 16 ? 430 : 260;
+    if ((fromFile == 1 || fromFile == 6) && advance == 16) score += 90;
+    if ((fromFile == 0 || fromFile == 7) && advance == 16) score -= 60;
+  }
+
+  return score;
 }
 
 static void orderRootMovesHost(const Board* board, Move* moves, int count) {
@@ -1443,7 +1471,79 @@ __device__ float quiesce(Board* b, float alpha, float beta, int depth, int ply) 
 // DEVICE: Negamax with alpha-beta pruning
 // ============================================================================
 
-__device__ float negamax(Board* b, int depth, float alpha, float beta, int ply) {
+__device__ float searchEval(Board* b, int ply) {
+  return C_TRAINCAR_EVAL ? evalCpuTraincar(b, ply) : (C_FULL_QEVAL ? evalPosition(b) : evalFast(b));
+}
+
+__device__ int futilityMargin(int depth) {
+  if (depth <= 0) return 0;
+  if (depth == 1) return 180;
+  if (depth == 2) return 400;
+  return 700;
+}
+
+__device__ int lmpThreshold(int depth) {
+  if (depth <= 0) return 0;
+  if (depth == 1) return 5;
+  if (depth == 2) return 9;
+  if (depth == 3) return 14;
+  return 22;
+}
+
+__device__ int razorMargin(int depth) {
+  if (depth <= 0) return 0;
+  if (depth == 1) return 300;
+  return 550;
+}
+
+__device__ float traincarPruningMult(int depth) {
+  int band = traincarDepthBand(depth);
+  float mult = C_FLAT_KNOBS[10 + band];
+  return mult > 0.0f ? mult : 1.0f;
+}
+
+__device__ int traincarSearchBreadth(int depth) {
+  int band = traincarDepthBand(depth);
+  float temp = C_FLAT_KNOBS[band];
+  return temp > 0.0f ? (int)floorf(temp) : 0;
+}
+
+__device__ int traincarRazorTuning(int depth) {
+  float step = C_FLAT_KNOBS[36];
+  if (step <= 0.0f) return 0;
+  return (int)roundf((float)traincarSearchBreadth(depth) * step * traincarPruningMult(depth));
+}
+
+__device__ int traincarFutilityTuning(int depth) {
+  float step = C_FLAT_KNOBS[37];
+  if (step <= 0.0f) return 0;
+  return (int)roundf((float)traincarSearchBreadth(depth) * step * traincarPruningMult(depth));
+}
+
+__device__ int traincarLmpTuning(int depth) {
+  float div = C_FLAT_KNOBS[38];
+  if (div <= 0.0f) return 0;
+  return (int)floorf(((float)traincarSearchBreadth(depth) / div) * traincarPruningMult(depth));
+}
+
+__device__ int traincarLmrTuning(int depth) {
+  float div = C_FLAT_KNOBS[39];
+  if (div <= 0.0f) return 0;
+  return (int)floorf(((float)traincarSearchBreadth(depth) / div) * traincarPruningMult(depth));
+}
+
+__device__ int moveIsPromotion(Board* b, Move* m) {
+  if (m->promo >= KNIGHT && m->promo <= QUEEN) return 1;
+  int moving = b->pieces[m->from];
+  if (!moving || (moving & 7) != PAWN) return 0;
+  int destRank = m->to / 8;
+  int movingIsW = (moving & 8) == 0;
+  return (movingIsW && destRank == 0) || (!movingIsW && destRank == 7);
+}
+
+__device__ float negamax(Board* b, int depth, float alpha, float beta, int ply, int doNull) {
+  int inCheck = C_CPU_SHAPED_SEARCH ? isInCheck(b, b->side) : 0;
+  if (C_CPU_SHAPED_SEARCH && inCheck) depth++;
   if (depth <= 0) return quiesce(b, alpha, beta, MAX_QUIESCE_DEPTH, ply);
 
   Move moves[MAX_MOVES];
@@ -1452,16 +1552,85 @@ __device__ float negamax(Board* b, int depth, float alpha, float beta, int ply) 
     return -90000.0f + (float)(DEFAULT_SEARCH_DEPTH - depth);
   }
 
+  int isPV = (beta - alpha) > 1.0f;
+  float staticEval = -99999.0f;
+  int razorTuning = 0;
+  int futilityTuning = 0;
+  int lmpTuning = 0;
+  int lmrTuning = 0;
+
+  if (C_CPU_SHAPED_SEARCH) {
+    staticEval = inCheck ? -99999.0f : searchEval(b, ply);
+    razorTuning = traincarRazorTuning(depth);
+    futilityTuning = traincarFutilityTuning(depth);
+    lmpTuning = traincarLmpTuning(depth);
+    lmrTuning = traincarLmrTuning(depth);
+
+    if (!isPV && !inCheck && depth <= 2 && staticEval + (float)(razorMargin(depth) + razorTuning) <= alpha) {
+      float razorScore = quiesce(b, alpha, beta, MAX_QUIESCE_DEPTH, ply);
+      if (razorScore <= alpha) return razorScore;
+    }
+
+    if (!isPV && !inCheck && depth <= 3 && doNull &&
+        staticEval - (float)(futilityMargin(depth) + futilityTuning) >= beta) {
+      return staticEval;
+    }
+
+    if (doNull && !inCheck && depth >= 3 && b->phase > 2 && staticEval >= beta) {
+      Board nullBoard = *b;
+      nullBoard.side = 1 - nullBoard.side;
+      nullBoard.epSq = -1;
+      int R = 3 + (int)fminf(floorf((staticEval - beta) / 200.0f), 2.0f) + (depth > 6 ? 1 : 0);
+      float nullScore = -negamax(&nullBoard, depth - R - 1, -beta, -beta + 1.0f, ply + 1, 0);
+      if (nullScore >= beta) return beta;
+    }
+  }
+
   orderMoves(b, moves, nMoves);
   float bestScore = -99999.0f;
   int movesSearched = 0;
 
   for (int i = 0; i < nMoves; i++) {
+    int isCapture = moveCapturedPiece(b, &moves[i]) != 0;
+    int isPromo = moveIsPromotion(b, &moves[i]);
     Board child = *b;
     makeMove(&child, &moves[i]);
     if (C_FILTER_LEGAL && isInCheck(&child, 1 - child.side)) continue;
     movesSearched++;
-    float score = -negamax(&child, depth - 1, -beta, -alpha, ply + 1);
+
+    int givesCheck = C_CPU_SHAPED_SEARCH ? isInCheck(&child, child.side) : 0;
+    if (C_CPU_SHAPED_SEARCH && !isPV && !inCheck && !givesCheck && !isCapture && !isPromo &&
+        depth <= 4 && movesSearched > (lmpThreshold(depth) + lmpTuning)) {
+      continue;
+    }
+
+    if (C_CPU_SHAPED_SEARCH && !isPV && !inCheck && !givesCheck && !isCapture && !isPromo &&
+        depth <= 3 && movesSearched > 1 &&
+        staticEval + (float)(futilityMargin(depth) + futilityTuning) <= alpha) {
+      continue;
+    }
+
+    float score;
+    if (C_CPU_SHAPED_SEARCH && movesSearched >= 4 && depth >= 3 && !inCheck && !isCapture && !isPromo && !givesCheck) {
+      int R = (int)floorf(0.5f + logf((float)depth) * logf((float)movesSearched) / 2.0f);
+      if (!isPV) R++;
+      if (R > depth - 2) R = depth - 2;
+      R -= lmrTuning;
+      if (R < 1) R = 1;
+      score = -negamax(&child, depth - 1 - R, -alpha - 1.0f, -alpha, ply + 1, 1);
+      if (score > alpha) {
+        score = -negamax(&child, depth - 1, -alpha - 1.0f, -alpha, ply + 1, 1);
+      }
+    } else if (C_CPU_SHAPED_SEARCH && movesSearched > 1) {
+      score = -negamax(&child, depth - 1, -alpha - 1.0f, -alpha, ply + 1, 1);
+    } else {
+      score = alpha + 1.0f;
+    }
+
+    if (!C_CPU_SHAPED_SEARCH || score > alpha) {
+      score = -negamax(&child, depth - 1, -beta, -alpha, ply + 1, 1);
+    }
+
     if (score > bestScore) bestScore = score;
     if (score > alpha) alpha = score;
     if (alpha >= beta) break; // beta cutoff
@@ -1494,7 +1663,7 @@ __global__ void searchKernel(
     return;
   }
   // Search from opponent's perspective, negate for our score
-  d_scores[tid] = -negamax(&child, searchDepth - 1, -99999.0f, 99999.0f, 1);
+  d_scores[tid] = -negamax(&child, searchDepth - 1, -99999.0f, 99999.0f, 1, 1);
 }
 
 __global__ void serialRootSearchKernel(
@@ -1520,12 +1689,12 @@ __global__ void serialRootSearchKernel(
 
     float score;
     if (movesSearched > 0) {
-      score = -negamax(&child, searchDepth - 1, -alpha - 1.0f, -alpha, 1);
+      score = -negamax(&child, searchDepth - 1, -alpha - 1.0f, -alpha, 1, 1);
     } else {
       score = alpha + 1.0f;
     }
     if (score > alpha) {
-      score = -negamax(&child, searchDepth - 1, -beta, -alpha, 1);
+      score = -negamax(&child, searchDepth - 1, -beta, -alpha, 1, 1);
     }
     d_scores[i] = score;
     movesSearched++;
@@ -1761,8 +1930,10 @@ int main(int argc, char** argv) {
   int fullQeval = 0;
   int filterLegal = 0;
   int traincarEval = 0;
+  int cpuShapedSearch = 0;
   int serialRoot = 0;
   int rootOrder = 0;
+  int traincarRootTieBreak = 0;
   int familyDispatch = 0;
   int timeoutRootProxy = 0;
   int traincarBook = 0;
@@ -1792,12 +1963,20 @@ int main(int argc, char** argv) {
       traincarEval = 1;
       continue;
     }
+    if (strcmp(argv[i], "--cpu-shaped-search") == 0) {
+      cpuShapedSearch = 1;
+      continue;
+    }
     if (strcmp(argv[i], "--serial-root") == 0) {
       serialRoot = 1;
       continue;
     }
     if (strcmp(argv[i], "--root-order") == 0) {
       rootOrder = 1;
+      continue;
+    }
+    if (strcmp(argv[i], "--traincar-root-tiebreak") == 0) {
+      traincarRootTieBreak = 1;
       continue;
     }
     if (strcmp(argv[i], "--family-dispatch") == 0) {
@@ -1833,12 +2012,13 @@ int main(int argc, char** argv) {
     } else {
       fprintf(stderr, "[dojo] loaded fighter blob %s\n", fighterBlobPath);
     }
-    if (traincarEval) {
+    if (traincarEval || cpuShapedSearch) {
       if (loadFlatKnobsFromBlob(fighterBlobPath, flatKnobs, 64)) {
         fprintf(stderr, "[dojo] loaded flat fighter knobs %s\n", fighterBlobPath);
       } else {
-        fprintf(stderr, "[dojo] warning: failed to load flat fighter knobs %s; traincar eval bridge disabled\n", fighterBlobPath);
+        fprintf(stderr, "[dojo] warning: failed to load flat fighter knobs %s; traincar-dependent bridges disabled\n", fighterBlobPath);
         traincarEval = 0;
+        cpuShapedSearch = 0;
       }
     }
   }
@@ -1862,8 +2042,10 @@ int main(int argc, char** argv) {
   if (fullQeval) fprintf(stderr, "[dojo] full qsearch eval: enabled\n");
   if (filterLegal) fprintf(stderr, "[dojo] legal child filter: enabled\n");
   if (traincarEval) fprintf(stderr, "[dojo] traincar eval bridge: enabled\n");
+  if (cpuShapedSearch) fprintf(stderr, "[dojo] cpu-shaped search: enabled\n");
   if (serialRoot) fprintf(stderr, "[dojo] serial root search: enabled\n");
   if (rootOrder) fprintf(stderr, "[dojo] root move ordering: enabled\n");
+  if (traincarRootTieBreak) fprintf(stderr, "[dojo] traincar root tie-break: enabled\n");
   if (familyDispatch) fprintf(stderr, "[dojo] source-family dispatch: enabled\n");
   if (timeoutRootProxy) fprintf(stderr, "[dojo] timeout root proxy: enabled\n");
   if (traincarBook) fprintf(stderr, "[dojo] traincar book: enabled (%d entries)\n", traincarBookCount);
@@ -1874,6 +2056,7 @@ int main(int argc, char** argv) {
   cudaMemcpyToSymbol(C_FULL_QEVAL, &fullQeval, sizeof(int));
   cudaMemcpyToSymbol(C_FILTER_LEGAL, &filterLegal, sizeof(int));
   cudaMemcpyToSymbol(C_TRAINCAR_EVAL, &traincarEval, sizeof(int));
+  cudaMemcpyToSymbol(C_CPU_SHAPED_SEARCH, &cpuShapedSearch, sizeof(int));
 
   // Allocate GPU memory
   Board *d_board; cudaMalloc(&d_board, sizeof(Board));
@@ -2030,10 +2213,16 @@ int main(int argc, char** argv) {
 
     // Find best move by search score
     int bestIdx = -1; float bestScore = -99999.0f;
+    int bestTieScore = -2147483647;
     for (int i = 0; i < numMoves; i++) {
-      if (h_searchScores[i] > bestScore) {
+      int tieScore = (traincarRootTieBreak && fighterFamily == FIGHTER_FAMILY_TRAINCAR)
+        ? hostTraincarRootTieScore(&board, &h_moves[i])
+        : 0;
+      if (h_searchScores[i] > bestScore ||
+          (fabsf(h_searchScores[i] - bestScore) <= 0.001f && tieScore > bestTieScore)) {
         bestScore = h_searchScores[i];
         bestIdx = i;
+        bestTieScore = tieScore;
       }
     }
     if (bestIdx < 0 || bestScore <= -99998.0f) { skippedNoLegalRootScore++; continue; }
@@ -2152,9 +2341,11 @@ int main(int argc, char** argv) {
   printf("\"elapsed\":%.2f,\"posPerSec\":%.1f,", elapsed, totalPos > 0 ? totalPos/elapsed : 0.0);
   printf("\"searchDepth\":%d,", searchDepth);
   printf("\"fighterFamily\":\"%s\",", fighterFamilyName(fighterFamily));
-  printf("\"familyDispatch\":%s,\"timeoutRootProxy\":%s,",
+  printf("\"familyDispatch\":%s,\"timeoutRootProxy\":%s,\"cpuShapedSearch\":%s,\"traincarRootTieBreak\":%s,",
     familyDispatch ? "true" : "false",
-    timeoutRootProxy ? "true" : "false");
+    timeoutRootProxy ? "true" : "false",
+    cpuShapedSearch ? "true" : "false",
+    traincarRootTieBreak ? "true" : "false");
   printf("\"traincarBook\":%s,\"traincarBookEntries\":%d,\"traincarBookOverrides\":%d,\"traincarBookMisses\":%d,",
     traincarBook ? "true" : "false",
     traincarBookCount,
