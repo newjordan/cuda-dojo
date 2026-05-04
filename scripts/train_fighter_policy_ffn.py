@@ -25,6 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT_GLOB = str(REPO_ROOT / "runtime/reports/*_accuracy.cpu_gpu_accuracy.json")
 DEFAULT_OUT = REPO_ROOT / "runtime/reports/ffn_policy_eval_latest.json"
 DEFAULT_WEIGHTS = REPO_ROOT / "runtime/reports/ffn_policy_latest.pt"
+DEFAULT_EXPORT_JSON = REPO_ROOT / "runtime/reports/ffn_policy_latest.json"
 
 PIECE_TO_FLOAT = {
     "P": 1.0, "N": 2.0, "B": 3.0, "R": 4.0, "Q": 5.0, "K": 6.0,
@@ -181,6 +182,32 @@ def evaluate(model: RootPolicyFFN, groups: list[dict[str, Any]], device: torch.d
     }
 
 
+def tensor_list(model: RootPolicyFFN, key: str) -> list[float]:
+    tensor = model.state_dict()[key].detach().cpu().contiguous().view(-1)
+    return [float(item) for item in tensor]
+
+
+def export_model_json(model: RootPolicyFFN, dim: int, metadata: dict[str, Any], path: str) -> None:
+    payload = {
+        "schema": "dojo.ffn_root_policy.v1",
+        "label": metadata["label"],
+        "featureDim": dim,
+        "hidden0": 64,
+        "hidden1": 32,
+        "activation": "silu",
+        "w0": tensor_list(model, "net.0.weight"),
+        "b0": tensor_list(model, "net.0.bias"),
+        "w1": tensor_list(model, "net.2.weight"),
+        "b1": tensor_list(model, "net.2.bias"),
+        "w2": tensor_list(model, "net.4.weight"),
+        "b2": tensor_list(model, "net.4.bias"),
+        "metadata": metadata,
+    }
+    export_path = Path(path)
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+    export_path.write_text(json.dumps(payload, separators=(",", ":")) + "\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--reports", nargs="*", default=None)
@@ -189,6 +216,7 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=20260504)
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--weights", default=str(DEFAULT_WEIGHTS))
+    parser.add_argument("--export-json", default=str(DEFAULT_EXPORT_JSON))
     args = parser.parse_args()
 
     random.seed(args.seed)
@@ -236,6 +264,7 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, indent=2) + "\n")
     torch.save({"state_dict": model.state_dict(), "feature_dim": dim, "metadata": out}, args.weights)
+    export_model_json(model, dim, out, args.export_json)
     print(json.dumps(out, indent=2))
     return 0
 

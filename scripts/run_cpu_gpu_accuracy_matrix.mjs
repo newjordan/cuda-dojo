@@ -37,6 +37,7 @@ function parseArgs(argv) {
     gpuFamilyDispatch: false,
     gpuTimeoutRootProxy: false,
     gpuEmitAll: false,
+    gpuFfnPolicy: '',
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -59,6 +60,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
     else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
     else if (arg === '--gpu-emit-all') options.gpuEmitAll = true;
+    else if (arg === '--gpu-ffn-policy') options.gpuFfnPolicy = argv[++i] || '';
   }
   return options;
 }
@@ -87,6 +89,7 @@ function runOne(entry, options) {
   if (options.gpuFamilyDispatch) args.push('--gpu-family-dispatch');
   if (options.gpuTimeoutRootProxy) args.push('--gpu-timeout-root-proxy');
   if (options.gpuEmitAll) args.push('--gpu-emit-all');
+  if (options.gpuFfnPolicy) args.push('--gpu-ffn-policy', options.gpuFfnPolicy);
 
   try {
     const raw = execFileSync(process.execPath, args, {
@@ -139,7 +142,9 @@ function buildMarkdown(summary) {
     const comparable = item.comparablePositions ?? 'n/a';
     const condition = item.condition?.label ||
       (item.gpuSummary?.timeoutRootProxy ||
-      item.warnings?.includes('timeout_root_proxy_condition_not_strict_parity')
+      item.gpuSummary?.ffnPolicy ||
+      item.warnings?.includes('timeout_root_proxy_condition_not_strict_parity') ||
+      item.warnings?.includes('ffn_policy_condition_not_strict_parity')
         ? 'proxy'
         : 'strict');
     const report = item.mdPath ? basename(item.mdPath) : 'n/a';
@@ -165,8 +170,10 @@ function main() {
   const exactCount = results.filter((item) => Number(item.agreementRate) === 1).length;
   const proxyCount = results.filter((item) =>
     item.gpuSummary?.timeoutRootProxy ||
+    item.gpuSummary?.ffnPolicy ||
     item.timeoutRootProxy ||
     item.warnings?.includes('timeout_root_proxy_condition_not_strict_parity') ||
+    item.warnings?.includes('ffn_policy_condition_not_strict_parity') ||
     item.condition?.gpu?.includes('proxy'),
   ).length;
 

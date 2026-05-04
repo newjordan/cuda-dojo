@@ -62,6 +62,11 @@ fresh-process fixes:
   position, and `npm run policy:ffn-train` trains a tiny candidate scorer. On
   the N=24 family-dispatch emit-all set, GPU top-1 is 68.4%, the FFN residual is
   90.5% on the full labeled set and 78.9% on holdout.
+- The learned residual now has an opt-in runtime path via
+  `--gpu-ffn-policy fighter_accuracy/artifacts/ffn_policy_top32_n24_2026-05-04.json`. On the same N=24
+  family-dispatch gate it raises runtime proxy agreement to 89.5% average
+  across five fighters, with 0/5 exact and 5/5 proxy-labeled. This is a policy
+  proxy condition, not strict JS/Python parity.
 
 Interpretation:
 
@@ -98,6 +103,14 @@ Trace the first disagreement for a single fighter/FEN:
 
 ```bash
 npm run accuracy:trace-first
+```
+
+Train and test the learned FFN residual proxy:
+
+```bash
+npm run accuracy:gpu-fighter-baseline -- --samples 24 --configs 4 --sims 4 --timeout-ms 120000 --gpu-depth 3 --gpu-filter-legal --gpu-family-dispatch --gpu-emit-all
+npm run policy:ffn-train -- --epochs 250
+npm run accuracy:gpu-fighter-baseline -- --samples 24 --configs 4 --sims 4 --timeout-ms 120000 --gpu-depth 3 --gpu-filter-legal --gpu-family-dispatch --gpu-ffn-policy fighter_accuracy/artifacts/ffn_policy_top32_n24_2026-05-04.json
 ```
 
 The external bridge commands write a receipt under `fighter_accuracy/receipts/`

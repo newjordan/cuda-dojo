@@ -736,6 +736,188 @@ static bool lookupTraincarBookMove(
   return false;
 }
 
+struct FFNPolicy {
+  int loaded;
+  int featureDim;
+  float w0[64 * 20];
+  float b0[64];
+  float w1[32 * 64];
+  float b1[32];
+  float w2[32];
+  float b2;
+};
+
+static bool parseNamedFloatArray(const char* root, const char* key, float* out, int count) {
+  if (!root || !key || !out || count <= 0) return false;
+  char needle[128];
+  snprintf(needle, sizeof(needle), "\"%s\"", key);
+  const char* section = strstr(root, needle);
+  if (!section) return false;
+  const char* open = strchr(section, '[');
+  if (!open) return false;
+  return parseFloatArray(open + 1, out, count) == count;
+}
+
+static bool loadFFNPolicy(const char* path, FFNPolicy* policy) {
+  if (!path || !*path || !policy) return false;
+  memset(policy, 0, sizeof(*policy));
+  std::ifstream stream(path, std::ios::in | std::ios::binary);
+  if (!stream.good()) return false;
+  stream.seekg(0, std::ios::end);
+  const std::streamoff size = stream.tellg();
+  if (size <= 0) return false;
+  std::string text;
+  text.resize((size_t)size);
+  stream.seekg(0, std::ios::beg);
+  stream.read(&text[0], size);
+  if (!stream.good() && !stream.eof()) return false;
+  const char* root = text.c_str();
+  if (!parseNamedFloatArray(root, "w0", policy->w0, 64 * 20)) return false;
+  if (!parseNamedFloatArray(root, "b0", policy->b0, 64)) return false;
+  if (!parseNamedFloatArray(root, "w1", policy->w1, 32 * 64)) return false;
+  if (!parseNamedFloatArray(root, "b1", policy->b1, 32)) return false;
+  if (!parseNamedFloatArray(root, "w2", policy->w2, 32)) return false;
+  float b2[1] = {0.0f};
+  if (!parseNamedFloatArray(root, "b2", b2, 1)) return false;
+  policy->b2 = b2[0];
+  policy->featureDim = 20;
+  policy->loaded = 1;
+  return true;
+}
+
+static float hostSilu(float x) {
+  return x / (1.0f + expf(-x));
+}
+
+static float hostPieceFeature(int piece) {
+  if (!piece) return 0.0f;
+  float value = (float)(piece & 7);
+  return (piece & BLACK_FLAG) ? -value : value;
+}
+
+static int hostFighterId(const char* blobPath) {
+  if (!blobPath) return 5;
+  if (strstr(blobPath, "razor_x")) return 0;
+  if (strstr(blobPath, "queensguard")) return 1;
+  if (strstr(blobPath, "firebird")) return 2;
+  if (strstr(blobPath, "fortress")) return 3;
+  if (strstr(blobPath, "razorblade_ii")) return 4;
+  return 5;
+}
+
+static int hostRootRank(Move* moves, float* scores, int count, int idx) {
+  bool used[MAX_MOVES] = {false};
+  for (int rank = 1; rank <= count; rank++) {
+    int best = -1;
+    float bestScore = -1.0e30f;
+    for (int i = 0; i < count; i++) {
+      if (!used[i] && scores[i] > bestScore) {
+        bestScore = scores[i];
+        best = i;
+      }
+    }
+    if (best < 0) break;
+    if (best == idx) return rank;
+    used[best] = true;
+  }
+  return count;
+}
+
+static void buildFFNFeatures(
+  const Board* board,
+  Move* moves,
+  float* scores,
+  int count,
+  int idx,
+  int bestIdx,
+  int fighterId,
+  float* out
+) {
+  memset(out, 0, 20 * sizeof(float));
+  const Move* move = &moves[idx];
+  const float score = scores[idx] / 100.0f;
+  const float bestScore = scores[bestIdx] / 100.0f;
+  const int moving = board->pieces[move->from];
+  const int captured = hostMoveCapturedPiece(board, move);
+  const int fromRank = move->from / 8;
+  const int fromFile = move->from % 8;
+  const int toRank = move->to / 8;
+  const int toFile = move->to % 8;
+
+  out[0] = score / 20.0f;
+  out[1] = (score - bestScore) / 20.0f;
+  out[2] = (float)hostRootRank(moves, scores, count, idx) / 64.0f;
+  out[3] = (float)idx / 64.0f;
+  out[4] = (float)count / 128.0f;
+  out[5] = hostPieceFeature(moving) / 6.0f;
+  out[6] = hostPieceFeature(captured) / 6.0f;
+  out[7] = (float)fromRank / 7.0f;
+  out[8] = (float)fromFile / 7.0f;
+  out[9] = (float)toRank / 7.0f;
+  out[10] = (float)toFile / 7.0f;
+  out[11] = board->side == 0 ? 1.0f : -1.0f;
+  out[12] = move->promo ? 1.0f : 0.0f;
+  out[13] = idx == bestIdx ? 1.0f : 0.0f;
+  int family = fighterId;
+  if (family < 0 || family > 5) family = 5;
+  out[14 + family] = 1.0f;
+}
+
+static float evalFFNPolicy(const FFNPolicy* policy, const float* features) {
+  float h0[64];
+  float h1[32];
+  for (int o = 0; o < 64; o++) {
+    float sum = policy->b0[o];
+    for (int i = 0; i < 20; i++) sum += policy->w0[o * 20 + i] * features[i];
+    h0[o] = hostSilu(sum);
+  }
+  for (int o = 0; o < 32; o++) {
+    float sum = policy->b1[o];
+    for (int i = 0; i < 64; i++) sum += policy->w1[o * 64 + i] * h0[i];
+    h1[o] = hostSilu(sum);
+  }
+  float out = policy->b2;
+  for (int i = 0; i < 32; i++) out += policy->w2[i] * h1[i];
+  return out;
+}
+
+static int chooseFFNPolicyMove(
+  const FFNPolicy* policy,
+  const Board* board,
+  Move* moves,
+  float* scores,
+  int count,
+  int currentBestIdx,
+  int fighterId,
+  int topN
+) {
+  if (!policy || !policy->loaded || currentBestIdx < 0) return currentBestIdx;
+  int bestIdx = currentBestIdx;
+  float bestLogit = -1.0e30f;
+  float features[20];
+  bool used[MAX_MOVES] = {false};
+  int limit = topN < count ? topN : count;
+  for (int rank = 0; rank < limit; rank++) {
+    int i = -1;
+    float bestScore = -1.0e30f;
+    for (int j = 0; j < count; j++) {
+      if (!used[j] && scores[j] > bestScore) {
+        bestScore = scores[j];
+        i = j;
+      }
+    }
+    if (i < 0 || scores[i] <= -99998.0f) break;
+    used[i] = true;
+    buildFFNFeatures(board, moves, scores, count, i, currentBestIdx, fighterId, features);
+    float logit = evalFFNPolicy(policy, features);
+    if (logit > bestLogit) {
+      bestLogit = logit;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
 // ============================================================================
 // HOST: Parse FEN — now computes incremental PeSTO mg/eg scores
 // ============================================================================
@@ -1966,12 +2148,19 @@ int main(int argc, char** argv) {
   int timeoutRootProxy = 0;
   int traincarBook = 0;
   int emitAllPositions = 0;
+  int ffnPolicyEnabled = 0;
+  const char* ffnPolicyPath = NULL;
   const char* traincarBookPath = "frostd4d/variants/the_un.js";
   int positional = 0;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--fighter-blob") == 0) { i++; continue; }
     if (strcmp(argv[i], "--traincar-book-path") == 0 && i + 1 < argc) {
       traincarBookPath = argv[++i];
+      continue;
+    }
+    if (strcmp(argv[i], "--ffn-policy") == 0 && i + 1 < argc) {
+      ffnPolicyPath = argv[++i];
+      ffnPolicyEnabled = 1;
       continue;
     }
     if (strcmp(argv[i], "--depth") == 0 && i + 1 < argc) {
@@ -2058,6 +2247,14 @@ int main(int argc, char** argv) {
   if (familyDispatch && fighterFamily == FIGHTER_FAMILY_TRAINCAR) traincarBook = 1;
   if (familyDispatch && fighterFamily == FIGHTER_FAMILY_RAZORBLADE_II) timeoutRootProxy = 1;
   if (traincarBook && fighterFamily != FIGHTER_FAMILY_TRAINCAR) traincarBook = 0;
+  FFNPolicy ffnPolicy;
+  memset(&ffnPolicy, 0, sizeof(ffnPolicy));
+  if (ffnPolicyEnabled) {
+    if (!loadFFNPolicy(ffnPolicyPath, &ffnPolicy)) {
+      fprintf(stderr, "[dojo] warning: failed to load ffn policy %s; disabled\n", ffnPolicyPath ? ffnPolicyPath : "");
+      ffnPolicyEnabled = 0;
+    }
+  }
   TraincarBookEntry* traincarBookEntries = (TraincarBookEntry*)malloc(MAX_TRAINCAR_BOOK_ENTRIES * sizeof(TraincarBookEntry));
   int traincarBookCount = 0;
   if (traincarBook && fighterFamily == FIGHTER_FAMILY_TRAINCAR) {
@@ -2083,6 +2280,7 @@ int main(int argc, char** argv) {
   if (timeoutRootProxy) fprintf(stderr, "[dojo] timeout root proxy: enabled\n");
   if (traincarBook) fprintf(stderr, "[dojo] traincar book: enabled (%d entries)\n", traincarBookCount);
   if (emitAllPositions) fprintf(stderr, "[dojo] emit-all positions: enabled\n");
+  if (ffnPolicyEnabled) fprintf(stderr, "[dojo] ffn policy residual: enabled (%s)\n", ffnPolicyPath);
 
   // Upload fighter knobs to constant memory for search evaluation
   cudaMemcpyToSymbol(C_FIGHTER_KNOBS, defaults, KNOB_COUNT * sizeof(float));
@@ -2128,6 +2326,7 @@ int main(int argc, char** argv) {
   int inputLines = 0, parsedLines = 0, comparablePositions = 0, agreements = 0;
   int skippedShort = 0, skippedNoTab = 0, skippedNoMoves = 0, skippedEngineMoveMissing = 0, skippedNoLegalRootScore = 0;
   int traincarBookOverrides = 0, traincarBookMisses = 0;
+  int ffnPolicyOverrides = 0;
 
   char line[512];
   struct timespec start, now;
@@ -2269,6 +2468,7 @@ int main(int argc, char** argv) {
         }
       }
     }
+    int bookApplied = 0;
     if (traincarBook && traincarBookCount > 0 && fighterFamily == FIGHTER_FAMILY_TRAINCAR) {
       char bookMove[8];
       if (lookupTraincarBookMove(traincarBookEntries, traincarBookCount, fen, bookMove, sizeof(bookMove))) {
@@ -2282,9 +2482,18 @@ int main(int argc, char** argv) {
           bestIdx = bookIdx;
           bestScore = h_searchScores[bookIdx];
           traincarBookOverrides++;
+          bookApplied = 1;
         } else {
           traincarBookMisses++;
         }
+      }
+    }
+    if (ffnPolicyEnabled && !bookApplied) {
+      int ffnIdx = chooseFFNPolicyMove(&ffnPolicy, &board, h_moves, h_searchScores, numMoves, bestIdx, hostFighterId(fighterBlobPath), 32);
+      if (ffnIdx >= 0 && ffnIdx < numMoves && h_searchScores[ffnIdx] > -99998.0f && ffnIdx != bestIdx) {
+        bestIdx = ffnIdx;
+        bestScore = h_searchScores[bestIdx];
+        ffnPolicyOverrides++;
       }
     }
 
@@ -2391,6 +2600,9 @@ int main(int argc, char** argv) {
     traincarBookCount,
     traincarBookOverrides,
     traincarBookMisses);
+  printf("\"ffnPolicy\":%s,\"ffnPolicyOverrides\":%d,",
+    ffnPolicyEnabled ? "true" : "false",
+    ffnPolicyOverrides);
   printf("\"verdict\":\"%s\",",
     totalPos==0 ? (agreements > 0 ? "ALL_AGREE" : "NO_DATA") :
     totalFixable*100/totalPos >= 70 ? "ARCHITECTURE_FINE" :

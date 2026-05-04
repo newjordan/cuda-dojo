@@ -35,6 +35,7 @@ function parseArgs(argv) {
     gpuFamilyDispatch: false,
     gpuTimeoutRootProxy: false,
     gpuEmitAll: false,
+    gpuFfnPolicy: '',
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -60,6 +61,7 @@ function parseArgs(argv) {
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
     else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
     else if (arg === '--gpu-emit-all') options.gpuEmitAll = true;
+    else if (arg === '--gpu-ffn-policy') options.gpuFfnPolicy = argv[++i] || '';
   }
 
   if (!options.fighter) {
@@ -200,7 +202,7 @@ function buildCpuInputLines(fighterPath, fens) {
   return { usable, skipped, input };
 }
 
-function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal, gpuTraincarEval, gpuCpuShapedSearch, gpuTraincarBook, gpuSerialRoot, gpuRootOrder, gpuTraincarRootTieBreak, gpuFamilyDispatch, gpuTimeoutRootProxy, gpuEmitAll) {
+function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal, gpuTraincarEval, gpuCpuShapedSearch, gpuTraincarBook, gpuSerialRoot, gpuRootOrder, gpuTraincarRootTieBreak, gpuFamilyDispatch, gpuTimeoutRootProxy, gpuEmitAll, gpuFfnPolicy) {
   if (!existsSync(GPU_FORGE_BIN)) throw new Error(`Missing gpu_forge binary: ${GPU_FORGE_BIN}`);
   if (!existsSync(blobPath)) throw new Error(`Missing fighter blob: ${blobPath}`);
   const forgeArgs = [String(configs), String(sims), '--fighter-blob', blobPath];
@@ -216,6 +218,7 @@ function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFul
   if (gpuFamilyDispatch) forgeArgs.push('--family-dispatch');
   if (gpuTimeoutRootProxy) forgeArgs.push('--timeout-root-proxy');
   if (gpuEmitAll) forgeArgs.push('--emit-all');
+  if (gpuFfnPolicy) forgeArgs.push('--ffn-policy', resolve(REPO_ROOT, gpuFfnPolicy));
   const command = timeoutMs > 0
     ? ['timeout', '--kill-after=10s', `${Math.ceil(timeoutMs / 1000)}s`, GPU_FORGE_BIN, ...forgeArgs]
     : [GPU_FORGE_BIN, ...forgeArgs];
@@ -256,13 +259,14 @@ function main() {
 
   const corpus = buildCorpus(options.samples);
   const { usable, skipped, input } = buildCpuInputLines(fighterPath, corpus);
-  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuCpuShapedSearch, options.gpuTraincarBook, options.gpuSerialRoot, options.gpuRootOrder, options.gpuTraincarRootTieBreak, options.gpuFamilyDispatch, options.gpuTimeoutRootProxy, options.gpuEmitAll);
+  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuCpuShapedSearch, options.gpuTraincarBook, options.gpuSerialRoot, options.gpuRootOrder, options.gpuTraincarRootTieBreak, options.gpuFamilyDispatch, options.gpuTimeoutRootProxy, options.gpuEmitAll, options.gpuFfnPolicy);
   const summary = gpu.summary || {};
   const gpuTags = [summary.timeoutRootProxy ? 'proxy' : 'strict'];
   if (summary.traincarBook) gpuTags.push('traincar_book');
   if (options.gpuTraincarEval) gpuTags.push('traincar_eval');
   if (options.gpuCpuShapedSearch) gpuTags.push('cpu_shaped_search');
   if (summary.traincarRootTieBreak) gpuTags.push('traincar_root_tiebreak');
+  if (summary.ffnPolicy) gpuTags.push('ffn_policy_proxy');
   const gpuCondition = gpuTags.join('_');
   const conditionLabel = `${CPU_HARNESS_CONDITION}+${gpuCondition}`;
 
@@ -281,6 +285,7 @@ function main() {
   if (skipped.length > 0) warnings.push(`cpu_skipped_${skipped.length}`);
   if (Number(summary.skippedEngineMoveMissing || 0) > 0) warnings.push('gpu_missing_engine_move_for_some_positions');
   if (summary.timeoutRootProxy) warnings.push('timeout_root_proxy_condition_not_strict_parity');
+  if (summary.ffnPolicy) warnings.push('ffn_policy_condition_not_strict_parity');
   if (options.gpuTraincarBook && !summary.traincarBook) warnings.push('traincar_book_requested_but_not_active');
 
   const report = {
@@ -307,6 +312,7 @@ function main() {
       gpuFamilyDispatch: options.gpuFamilyDispatch,
       gpuTimeoutRootProxy: options.gpuTimeoutRootProxy,
       gpuEmitAll: options.gpuEmitAll,
+      gpuFfnPolicy: options.gpuFfnPolicy,
     },
     corpus: {
       size: corpus.length,
@@ -338,6 +344,8 @@ function main() {
       traincarBookOverrides: Number(summary.traincarBookOverrides || 0),
       traincarBookMisses: Number(summary.traincarBookMisses || 0),
       emitAllPositions: Boolean(summary.emitAllPositions),
+      ffnPolicy: Boolean(summary.ffnPolicy),
+      ffnPolicyOverrides: Number(summary.ffnPolicyOverrides || 0),
       skippedNoMoves: Number(summary.skippedNoMoves || 0),
       skippedEngineMoveMissing: Number(summary.skippedEngineMoveMissing || 0),
     },
@@ -374,6 +382,8 @@ function main() {
     traincarRootTieBreak: report.gpuSummary.traincarRootTieBreak,
     traincarBookOverrides: report.gpuSummary.traincarBookOverrides,
     emitAllPositions: report.gpuSummary.emitAllPositions,
+    ffnPolicy: report.gpuSummary.ffnPolicy,
+    ffnPolicyOverrides: report.gpuSummary.ffnPolicyOverrides,
     condition: report.condition,
     failures: report.failures,
     warnings: report.warnings,

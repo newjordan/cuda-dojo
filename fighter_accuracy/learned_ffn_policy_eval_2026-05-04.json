@@ -5,6 +5,37 @@
   "gpuTop1": 0.6842105263157895,
   "ffnFullTop1": 0.9052631578947369,
   "ffnHoldoutTop1": 0.7894736842105263,
+  "runtimeProxyAverageAgreementRate": 0.8947368421052632,
+  "runtimeProxyExactCount": 0,
+  "runtimeProxyCount": 5,
+  "runtimeProxyCondition": "N=24 family-dispatch depth3 filter-legal ffn-policy; configs=4 sims=4 timeoutMs=120000; FFN scores the same top-32 GPU root-candidate surface emitted for training",
+  "runtimeProxyPerFighter": [
+    {
+      "name": "Razor X",
+      "agreementRate": 0.8421052631578947,
+      "ffnPolicyOverrides": 6
+    },
+    {
+      "name": "Queensguard",
+      "agreementRate": 0.8947368421052632,
+      "ffnPolicyOverrides": 8
+    },
+    {
+      "name": "Firebird",
+      "agreementRate": 0.8947368421052632,
+      "ffnPolicyOverrides": 7
+    },
+    {
+      "name": "Fortress",
+      "agreementRate": 0.9473684210526315,
+      "ffnPolicyOverrides": 9
+    },
+    {
+      "name": "RazorBlade II",
+      "agreementRate": 0.8947368421052632,
+      "ffnPolicyOverrides": 1
+    }
+  ],
   "trainCount": 76,
   "holdoutCount": 19,
   "featureDim": 20,
@@ -13,5 +44,7 @@
   "device": "cuda",
   "artifact": "runtime/reports/ffn_policy_eval_latest.json",
   "weights": "runtime/reports/ffn_policy_latest.pt",
-  "interpretation": "FFN is useful as a learned residual policy over GPU root candidates. This is not strict JS/Python fighter parity and must not be reported as a proof that the source fighter was exactly accelerated."
+  "exportedPolicy": "runtime/reports/ffn_policy_latest.json",
+  "trackedExportedPolicy": "fighter_accuracy/artifacts/ffn_policy_top32_n24_2026-05-04.json",
+  "interpretation": "FFN is useful as a learned residual policy over GPU root candidates and now has an opt-in runtime hook. This is not strict JS/Python fighter parity and must not be reported as a proof that the source fighter was exactly accelerated."
 }
