@@ -619,6 +619,47 @@ static int loadTraincarBook(const char* path, TraincarBookEntry* entries, int ma
   return count;
 }
 
+static int loadTraincarBookFromBlob(const char* blobPath, TraincarBookEntry* entries, int maxEntries) {
+  if (!blobPath || !*blobPath || !entries || maxEntries <= 0) return 0;
+  std::ifstream stream(blobPath, std::ios::in | std::ios::binary);
+  if (!stream.good()) return 0;
+  stream.seekg(0, std::ios::end);
+  const std::streamoff size = stream.tellg();
+  if (size <= 0) return 0;
+  std::string text;
+  text.resize((size_t)size);
+  stream.seekg(0, std::ios::beg);
+  stream.read(&text[0], size);
+  if (!stream.good() && !stream.eof()) return 0;
+
+  const char* section = strstr(text.c_str(), "\"openingBook\"");
+  if (!section) return 0;
+  const char* cursor = strchr(section, '[');
+  if (!cursor) return 0;
+  int count = 0;
+  while ((cursor = strstr(cursor, "\"hash\"")) != NULL && count < maxEntries) {
+    const char* hashColon = strchr(cursor, ':');
+    if (!hashColon) break;
+    char* hashEnd = NULL;
+    unsigned long hash = strtoul(hashColon + 1, &hashEnd, 10);
+    if (hashEnd == hashColon + 1) { cursor = hashColon + 1; continue; }
+    const char* moveKey = strstr(hashEnd, "\"move\"");
+    if (!moveKey) break;
+    const char* moveColon = strchr(moveKey, ':');
+    char move[8];
+    if (!moveColon || !readQuotedString(moveColon, move, sizeof(move), NULL)) {
+      cursor = moveKey + 1;
+      continue;
+    }
+    entries[count].hash = (uint32_t)hash;
+    strncpy(entries[count].move, move, sizeof(entries[count].move) - 1);
+    entries[count].move[sizeof(entries[count].move) - 1] = 0;
+    count++;
+    cursor = moveKey + 1;
+  }
+  return count;
+}
+
 static bool lookupTraincarBookMove(
   TraincarBookEntry* entries,
   int count,
@@ -1807,7 +1848,10 @@ int main(int argc, char** argv) {
   TraincarBookEntry* traincarBookEntries = (TraincarBookEntry*)malloc(MAX_TRAINCAR_BOOK_ENTRIES * sizeof(TraincarBookEntry));
   int traincarBookCount = 0;
   if (traincarBook && fighterFamily == FIGHTER_FAMILY_TRAINCAR) {
-    traincarBookCount = loadTraincarBook(traincarBookPath, traincarBookEntries, MAX_TRAINCAR_BOOK_ENTRIES);
+    traincarBookCount = loadTraincarBookFromBlob(fighterBlobPath, traincarBookEntries, MAX_TRAINCAR_BOOK_ENTRIES);
+    if (traincarBookCount <= 0) {
+      traincarBookCount = loadTraincarBook(traincarBookPath, traincarBookEntries, MAX_TRAINCAR_BOOK_ENTRIES);
+    }
     if (traincarBookCount <= 0) {
       fprintf(stderr, "[dojo] warning: failed to load traincar book %s; traincar book disabled\n", traincarBookPath);
       traincarBook = 0;

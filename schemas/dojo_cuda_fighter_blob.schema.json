@@ -108,6 +108,18 @@
         "items": { "type": "integer", "minimum": 0 }
       }
     },
+    "openingBook": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["hash", "move"],
+        "properties": {
+          "hash": { "type": "integer", "minimum": 0 },
+          "move": { "type": "string" }
+        }
+      }
+    },
     "legacy44Pack": {
       "type": ["object", "null"],
       "additionalProperties": false,
