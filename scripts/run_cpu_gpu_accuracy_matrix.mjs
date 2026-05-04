@@ -117,6 +117,9 @@ function buildMarkdown(summary) {
   lines.push('# CPU-GPU Accuracy Matrix');
   lines.push('');
   lines.push(`Generated: ${summary.generatedAt}`);
+  lines.push(`Average agreement: ${(summary.averageAgreementRate * 100).toFixed(1)}%`);
+  lines.push(`Exact 1:1 fighters: ${summary.exactCount}/${summary.total}`);
+  lines.push(`Proxy-labeled fighters: ${summary.proxyCount}/${summary.total}`);
   lines.push('');
   lines.push('| Fighter | Status | Agreement | Coverage | Comparable | Condition | Report |');
   lines.push('|---|---:|---:|---:|---:|---|---|');
@@ -144,6 +147,19 @@ function main() {
   const results = FIGHTERS.map((entry) => runOne(entry, options));
   const passCount = results.filter((item) => item.ok).length;
   const failed = results.filter((item) => !item.ok).map((item) => item.name);
+  const agreementValues = results
+    .map((item) => Number(item.agreementRate))
+    .filter((value) => Number.isFinite(value));
+  const averageAgreementRate = agreementValues.length
+    ? agreementValues.reduce((sum, value) => sum + value, 0) / agreementValues.length
+    : 0;
+  const exactCount = results.filter((item) => Number(item.agreementRate) === 1).length;
+  const proxyCount = results.filter((item) =>
+    item.gpuSummary?.timeoutRootProxy ||
+    item.timeoutRootProxy ||
+    item.warnings?.includes('timeout_root_proxy_condition_not_strict_parity') ||
+    item.condition?.gpu?.includes('proxy'),
+  ).length;
 
   const summary = {
     ok: failed.length === 0,
@@ -151,6 +167,9 @@ function main() {
     options,
     total: results.length,
     passCount,
+    averageAgreementRate,
+    exactCount,
+    proxyCount,
     failed,
     results,
   };
@@ -165,6 +184,9 @@ function main() {
     ok: summary.ok,
     total: summary.total,
     passCount: summary.passCount,
+    averageAgreementRate: summary.averageAgreementRate,
+    exactCount: summary.exactCount,
+    proxyCount: summary.proxyCount,
     failed: summary.failed,
     jsonPath,
     mdPath,
