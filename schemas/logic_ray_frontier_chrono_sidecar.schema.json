@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://theforge.local/schemas/logic_ray_frontier_chrono_sidecar.schema.json",
+  "title": "CUDA Dojo logicRayFrontier Chronometric Sidecar Row",
+  "description": "Sidecar-only chronometric diagnostics paired to one logicRayFrontier row. This does not widen core frontier geometry or run chess search.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "sidecarId",
+    "logicRayFrontierHash",
+    "rootId",
+    "rootFen",
+    "rootIndex",
+    "move",
+    "rank",
+    "tau",
+    "timePhase",
+    "pressureDrift",
+    "relationDrift",
+    "pathContortion",
+    "uncertainty",
+    "eventHorizon",
+    "vectors",
+    "diagnostics",
+    "runtimeChoiceSignal",
+    "provenance"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://theforge.local/schemas/logic_ray_frontier_chrono_sidecar.schema.json"
+    },
+    "schemaVersion": {
+      "const": "dojo.logic_ray_frontier_chrono_sidecar.v1"
+    },
+    "sidecarId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "logicRayFrontierHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "rootId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rootFen": {
+      "type": "string",
+      "minLength": 10
+    },
+    "rootIndex": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "move": {
+      "$ref": "#/$defs/uciMove"
+    },
+    "rank": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "tau": {
+      "type": "number",
+      "minimum": 0
+    },
+    "timePhase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase", "theta", "thetaSin", "thetaCos", "tauSource"],
+      "properties": {
+        "phase": {
+          "type": "string",
+          "enum": ["opening", "middlegame", "endgame", "root_branch"]
+        },
+        "theta": { "type": "number" },
+        "thetaSin": { "type": "number", "minimum": -1, "maximum": 1 },
+        "thetaCos": { "type": "number", "minimum": -1, "maximum": 1 },
+        "tauSource": { "type": "string", "minLength": 1 }
+      }
+    },
+    "pressureDrift": {
+      "$ref": "#/$defs/scoredBucket"
+    },
+    "relationDrift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "bucket", "pathProbability", "rankGradient"],
+      "properties": {
+        "score": { "type": "number" },
+        "bucket": { "$ref": "#/$defs/driftBucket" },
+        "pathProbability": { "$ref": "#/$defs/probability" },
+        "rankGradient": { "type": "number" }
+      }
+    },
+    "pathContortion": {
+      "$ref": "#/$defs/scoredBucket"
+    },
+    "uncertainty": {
+      "$ref": "#/$defs/scoredBucket"
+    },
+    "eventHorizon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bucket", "rank", "rootWidth", "pathDepth"],
+      "properties": {
+        "bucket": {
+          "type": "string",
+          "enum": ["immediate", "near", "mid", "far", "quarantine"]
+        },
+        "rank": { "type": "integer", "minimum": 1 },
+        "rootWidth": { "type": "integer", "minimum": 1 },
+        "pathDepth": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "vectors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["z", "u", "p", "n", "F_ext", "F_cont"],
+      "properties": {
+        "z": { "$ref": "#/$defs/vector4" },
+        "u": { "$ref": "#/$defs/vector4" },
+        "p": { "$ref": "#/$defs/vector4" },
+        "n": { "$ref": "#/$defs/vector4" },
+        "F_ext": { "$ref": "#/$defs/vector4" },
+        "F_cont": { "$ref": "#/$defs/vector4" }
+      }
+    },
+    "actionFeatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "source", "piece", "family", "flags", "scalars", "actionVector4"],
+      "properties": {
+        "schemaVersion": {
+          "const": "dojo.chrono_o2_action_features.v1"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "piece": {
+          "type": "string",
+          "enum": ["pawn", "knight", "bishop", "rook", "queen", "king", "empty", "unknown"]
+        },
+        "pieceColor": {
+          "type": "string",
+          "enum": ["white", "black", "none"]
+        },
+        "family": {
+          "type": "string",
+          "enum": ["quiet", "capture", "castle", "promotion", "invalid"]
+        },
+        "capturedPiece": {
+          "type": "string",
+          "enum": ["pawn", "knight", "bishop", "rook", "queen", "king", "empty", "unknown"]
+        },
+        "flags": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "capture",
+            "promotion",
+            "castle",
+            "diagonal",
+            "center4",
+            "center16",
+            "homeDeparture",
+            "forwardPositive",
+            "backwardOrLevel",
+            "sameFile",
+            "sameRank"
+          ],
+          "properties": {
+            "capture": { "type": "boolean" },
+            "promotion": { "type": "boolean" },
+            "castle": { "type": "boolean" },
+            "diagonal": { "type": "boolean" },
+            "center4": { "type": "boolean" },
+            "center16": { "type": "boolean" },
+            "homeDeparture": { "type": "boolean" },
+            "forwardPositive": { "type": "boolean" },
+            "backwardOrLevel": { "type": "boolean" },
+            "sameFile": { "type": "boolean" },
+            "sameRank": { "type": "boolean" }
+          }
+        },
+        "scalars": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dx", "dy", "forward", "distance", "targetFile", "targetRank"],
+          "properties": {
+            "dx": { "type": "number" },
+            "dy": { "type": "number" },
+            "forward": { "type": "number" },
+            "distance": { "type": "number" },
+            "targetFile": { "type": "number" },
+            "targetRank": { "type": "number" }
+          }
+        },
+        "actionVector4": {
+          "$ref": "#/$defs/vector4"
+        }
+      }
+    },
+    "tacticalContact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "source", "gpuVerified", "flags", "counts", "squares", "pieces", "contactVector4"],
+      "properties": {
+        "schemaVersion": {
+          "const": "dojo.chrono_o2_gpu_tactical_contact.v1"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gpuVerified": {
+          "type": "boolean"
+        },
+        "flags": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "destinationDefendedBefore",
+            "destinationAttackedBefore",
+            "destinationDefendedAfter",
+            "destinationAttackedAfter",
+            "moverInCheckBefore",
+            "givesCheckAfter",
+            "captureLike",
+            "promotion"
+          ],
+          "properties": {
+            "destinationDefendedBefore": { "type": "boolean" },
+            "destinationAttackedBefore": { "type": "boolean" },
+            "destinationDefendedAfter": { "type": "boolean" },
+            "destinationAttackedAfter": { "type": "boolean" },
+            "moverInCheckBefore": { "type": "boolean" },
+            "givesCheckAfter": { "type": "boolean" },
+            "captureLike": { "type": "boolean" },
+            "promotion": { "type": "boolean" }
+          }
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["opponentLegalRepliesAfter", "contactBalanceAfter"],
+          "properties": {
+            "opponentLegalRepliesAfter": { "type": "integer", "minimum": 0 },
+            "contactBalanceAfter": { "type": "integer" }
+          }
+        },
+        "squares": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from", "to"],
+          "properties": {
+            "from": { "type": "integer", "minimum": 0, "maximum": 63 },
+            "to": { "type": "integer", "minimum": 0, "maximum": 63 }
+          }
+        },
+        "pieces": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["movingPiece", "capturedPiece"],
+          "properties": {
+            "movingPiece": { "type": "integer", "minimum": 0, "maximum": 12 },
+            "capturedPiece": { "type": "integer", "minimum": 0, "maximum": 12 }
+          }
+        },
+        "contactVector4": {
+          "$ref": "#/$defs/vector4"
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["normBefore", "normAfter", "normDrift", "orthogonalityResidual", "stabilityScore"],
+      "properties": {
+        "normBefore": { "type": "number" },
+        "normAfter": { "type": "number" },
+        "normDrift": { "type": "number" },
+        "orthogonalityResidual": { "type": "number" },
+        "stabilityScore": { "$ref": "#/$defs/probability" }
+      }
+    },
+    "runtimeChoiceSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selectedMoveInFrontier", "acceptedUsefulInjection", "usefulInjectionScore", "promotionEligible"],
+      "properties": {
+        "selectedMoveInFrontier": { "type": "boolean" },
+        "acceptedUsefulInjection": { "type": "boolean" },
+        "usefulInjectionScore": { "$ref": "#/$defs/probability" },
+        "promotionEligible": { "type": "boolean" }
+      }
+    },
+    "responseTensors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootstrapNotLearned", "K0", "Kc", "Ks"],
+      "properties": {
+        "bootstrapNotLearned": { "type": "boolean" },
+        "K0": { "$ref": "#/$defs/tensorSummary4x4" },
+        "Kc": { "$ref": "#/$defs/tensorSummary4x4" },
+        "Ks": { "$ref": "#/$defs/tensorSummary4x4" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["generatedAt", "sourceBridgePath", "derivation", "noCoreGeometryWidening", "hostRole"],
+      "properties": {
+        "generatedAt": { "type": "string", "minLength": 1 },
+        "sourceBridgePath": { "type": "string", "minLength": 1 },
+        "sourceOmniFoldManifestPath": { "type": ["string", "null"] },
+        "derivation": { "type": "string", "minLength": 1 },
+        "noCoreGeometryWidening": { "const": true },
+        "hostRole": { "const": "sidecar_build_validate_only" }
+      }
+    }
+  },
+  "$defs": {
+    "uciMove": {
+      "type": "string",
+      "pattern": "^(?:[a-h][1-8][a-h][1-8][qrbn]?|0000)$"
+    },
+    "probability": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "vector4": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "type": "number" }
+    },
+    "driftBucket": {
+      "type": "string",
+      "enum": ["relieving", "neutral", "rising", "unstable"]
+    },
+    "scoredBucket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "bucket"],
+      "properties": {
+        "score": { "type": "number" },
+        "bucket": { "$ref": "#/$defs/driftBucket" }
+      }
+    },
+    "tensorSummary4x4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trace", "frobNorm", "maxAbsOffdiag", "det"],
+      "properties": {
+        "trace": { "type": "number" },
+        "frobNorm": { "type": "number" },
+        "maxAbsOffdiag": { "type": "number" },
+        "det": { "type": "number" }
+      }
+    }
+  }
+}
