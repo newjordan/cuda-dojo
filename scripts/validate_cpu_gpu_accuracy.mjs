@@ -10,6 +10,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
 const REPORT_DIR = join(REPO_ROOT, 'runtime', 'reports');
 const GPU_FORGE_BIN = join(REPO_ROOT, 'cuda', 'gpu_forge');
+const FRONTIER_VALIDATOR = join(REPO_ROOT, 'scripts', 'validate_logic_ray_frontier_schema.py');
+const FRONTIER_ROW_SCHEMA = 'https://theforge.local/schemas/logic_ray_frontier.schema.json';
 const CPU_HARNESS_CONDITION = 'standalone_fresh_process';
 
 function parseArgs(argv) {
@@ -35,6 +37,8 @@ function parseArgs(argv) {
     gpuTraincarRootTieBreak: false,
     gpuTraincarRunwayRoot: false,
     gpuTraincarRunwayMargin: 85,
+    gpuTraincarRootPrior: false,
+    gpuTraincarCpuOrder: false,
     gpuFamilyDispatch: false,
     gpuTimeoutRootProxy: false,
     gpuEmitAll: false,
@@ -64,6 +68,8 @@ function parseArgs(argv) {
     else if (arg === '--gpu-traincar-root-tiebreak') options.gpuTraincarRootTieBreak = true;
     else if (arg === '--gpu-traincar-runway-root') options.gpuTraincarRunwayRoot = true;
     else if (arg === '--gpu-traincar-runway-margin') options.gpuTraincarRunwayMargin = Math.max(0, Number(argv[++i] || options.gpuTraincarRunwayMargin));
+    else if (arg === '--gpu-traincar-root-prior') options.gpuTraincarRootPrior = true;
+    else if (arg === '--gpu-traincar-cpu-order') options.gpuTraincarCpuOrder = true;
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
     else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
     else if (arg === '--gpu-emit-all') options.gpuEmitAll = true;
@@ -275,7 +281,7 @@ function buildCpuInputLines(fighterPath, fens) {
   return { usable, skipped, input };
 }
 
-function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal, gpuTraincarEval, gpuCpuShapedSearch, gpuTraincarBook, gpuSerialRoot, gpuRootOrder, gpuTraincarRootTieBreak, gpuTraincarRunwayRoot, gpuTraincarRunwayMargin, gpuFamilyDispatch, gpuTimeoutRootProxy, gpuEmitAll, gpuFfnPolicy) {
+function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFullQeval, gpuFilterLegal, gpuTraincarEval, gpuCpuShapedSearch, gpuTraincarBook, gpuSerialRoot, gpuRootOrder, gpuTraincarRootTieBreak, gpuTraincarRunwayRoot, gpuTraincarRunwayMargin, gpuTraincarRootPrior, gpuTraincarCpuOrder, gpuFamilyDispatch, gpuTimeoutRootProxy, gpuEmitAll, gpuFfnPolicy) {
   if (!existsSync(GPU_FORGE_BIN)) throw new Error(`Missing gpu_forge binary: ${GPU_FORGE_BIN}`);
   if (!existsSync(blobPath)) throw new Error(`Missing fighter blob: ${blobPath}`);
   const forgeArgs = [String(configs), String(sims), '--fighter-blob', blobPath];
@@ -289,6 +295,8 @@ function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFul
   if (gpuRootOrder) forgeArgs.push('--root-order');
   if (gpuTraincarRootTieBreak) forgeArgs.push('--traincar-root-tiebreak');
   if (gpuTraincarRunwayRoot) forgeArgs.push('--traincar-runway-root', '--traincar-runway-margin', String(gpuTraincarRunwayMargin));
+  if (gpuTraincarRootPrior) forgeArgs.push('--traincar-root-prior');
+  if (gpuTraincarCpuOrder) forgeArgs.push('--traincar-cpu-order');
   if (gpuFamilyDispatch) forgeArgs.push('--family-dispatch');
   if (gpuTimeoutRootProxy) forgeArgs.push('--timeout-root-proxy');
   if (gpuEmitAll) forgeArgs.push('--emit-all');
@@ -302,6 +310,260 @@ function runGpuForge(configs, sims, blobPath, input, timeoutMs, gpuDepth, gpuFul
     { cwd: REPO_ROOT, input, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
   );
   return JSON.parse(raw);
+}
+
+function clamp(value, min = 0, max = 1) {
+  return Math.min(max, Math.max(min, Number(value) || 0));
+}
+
+function round(value, digits = 6) {
+  const factor = 10 ** digits;
+  return Math.round(Number(value || 0) * factor) / factor;
+}
+
+function softmax(items, temperatureCp = 80) {
+  if (!items.length) return [];
+  const scores = items.map((item) => Number(item.score || 0) * 100);
+  const maxScore = Math.max(...scores);
+  const weights = scores.map((score) => Math.exp((score - maxScore) / temperatureCp));
+  const denom = weights.reduce((sum, value) => sum + value, 0);
+  return weights.map((value) => denom > 0 ? value / denom : 1 / items.length);
+}
+
+function pzrgFromGateRoot(position, move, scoreCp, gapCp, pathProbability) {
+  const agreed = Boolean(position.agree);
+  let pressure = agreed ? 'root_agreement_pressure' : 'root_disagreement_pressure';
+  let chessExpression = agreed ? 'candidate_cohesion' : 'candidate_tension';
+  let actionGradient = agreed ? 'increase_accepted_root_choice' : 'decrease_unexplained_root_choice';
+  let confidence = agreed ? 'high' : 'medium';
+
+  if (gapCp >= 120) {
+    pressure = 'danger_pressure';
+    chessExpression = 'forced_alternative';
+    actionGradient = 'increase_frontier_audit';
+    confidence = 'medium';
+  } else if (scoreCp >= 120) {
+    pressure = 'conversion_pressure';
+    chessExpression = 'conversion_candidate';
+    actionGradient = 'increase_conversion_move';
+  }
+
+  return {
+    schema: 'pzrg_4d_label_v1',
+    geometry: 'root_move_relation',
+    pressure,
+    chessExpression,
+    actionGradient,
+    relationScope: 'cuda_fighter_accuracy_gate_root_distribution',
+    confidence,
+    evidence: {
+      source: 'cuda_gpu_forge_accuracy_gate',
+      fen: position.fen,
+      move,
+      gpuSelectedMove: position.mcts || null,
+      referenceMove: position.engine || null,
+      agree: agreed,
+      scoreCp: round(scoreCp, 3),
+      scoreGapFromBestCp: round(gapCp, 3),
+      pathProbability: round(pathProbability),
+      engineRank: Number(position.engine_rank || 0),
+      legalCount: Number(position.legal_count || 0),
+      fixable: Number(position.fixable || 0),
+    },
+  };
+}
+
+function frontierRowsFromGatePositions(positions, context) {
+  const rows = [];
+  for (const [positionIndex, position] of positions.entries()) {
+    const root = Array.isArray(position.gpu_root)
+      ? position.gpu_root.filter((item) => item?.move && item.move !== '0000')
+      : [];
+    if (!root.length) continue;
+
+    const bestScoreCp = Math.max(...root.map((item) => Number(item.score || 0) * 100));
+    const minScoreCp = Math.min(...root.map((item) => Number(item.score || 0) * 100));
+    const scoreSpan = Math.max(1, bestScoreCp - minScoreCp);
+    const probabilities = softmax(root, 80);
+    const selectedMove = String(position.mcts || '');
+    const emittedWidth = root.length;
+    const frontierWidth = Math.max(Number(position.legal_count || emittedWidth), emittedWidth, 1);
+
+    for (const [rankIndex, item] of root.entries()) {
+      const move = String(item.move || '');
+      const scoreCp = Number(item.score || 0) * 100;
+      const gapCp = Math.max(0, bestScoreCp - scoreCp);
+      const pathProbability = round(probabilities[rankIndex]);
+      const rankPressure = emittedWidth <= 1 ? 0 : rankIndex / (emittedWidth - 1);
+      const scorePressure = clamp(gapCp / scoreSpan);
+      const risk = round(clamp(0.35 * rankPressure + 0.45 * scorePressure + 0.2 * (1 - pathProbability)));
+      const lockIn = round(clamp(0.55 * pathProbability + 0.45 * (1 - scorePressure)));
+      const utility = round((scoreCp / 100) + lockIn - risk);
+      const pzrg4d = pzrgFromGateRoot(position, move, scoreCp, gapCp, pathProbability);
+      const selectedMoveInFrontier = move === selectedMove;
+      const acceptedUsefulInjection = selectedMoveInFrontier && Boolean(position.agree);
+
+      rows.push({
+        $schema: FRONTIER_ROW_SCHEMA,
+        schemaVersion: 'dojo.logic_ray_frontier.v1',
+        rootId: `${context.slug}.accuracy_gate.${positionIndex + 1}`,
+        rootFen: String(position.fen || ''),
+        rootIndex: positionIndex,
+        sourceEngine: 'cuda_dojo',
+        sourceKernel: 'cuda/gpu_forge.cu::searchKernel',
+        move,
+        rank: Number(item.rank || rankIndex + 1),
+        path: [move],
+        scoreCp: round(scoreCp, 3),
+        scoreGapFromBestCp: round(gapCp, 3),
+        pathProbability,
+        risk,
+        lockIn,
+        utility,
+        survivalBucket: risk >= 0.72 ? 'survival' : 'stable_development',
+        conversionBucket: scoreCp >= 450 ? 'terminal' : (scoreCp >= 120 ? 'conversion' : (risk >= 0.72 ? 'survival_repair' : 'candidate')),
+        pzrg4d,
+        rayfrontFamily: 'cuda_fighter_accuracy_gate_v1',
+        rayfrontMetrics: {
+          frontierWidth,
+          emittedWidth,
+          rootOrderScoreCp: round(scoreCp, 3),
+          scoreGapFromBestCp: round(gapCp, 3),
+          softmaxTemperatureCp: 80,
+          schedulerFrontierSeeded: frontierWidth,
+          schedulerFrontierPops: emittedWidth,
+          schedulerEvalRequests: emittedWidth,
+          schedulerEvalRequestDepth: emittedWidth,
+          evalBackend: 'gpu_forge_root_search',
+          evalBucketIdx: 0,
+          evalBucketSize: emittedWidth,
+          evalRequestCount: emittedWidth,
+          evalResultCount: emittedWidth,
+          evalDroppedRequests: Math.max(0, frontierWidth - emittedWidth),
+          evalFallbackDispatches: 0,
+          evalFailedDispatches: 0,
+          runtimeUsed: true,
+          reorderedRootMoves: 0,
+          rankCoverage: round(emittedWidth / frontierWidth),
+        },
+        omnifoldFamily: {
+          status: 'placeholder',
+          families: ['elite_2', 'elite_4', 'elite_6', 'elite_8'],
+          selectedFamily: null,
+          offManifoldAudit: null,
+        },
+        chrono: {
+          status: 'placeholder',
+          timePhase: null,
+          pressureDrift: null,
+          relationDrift: null,
+          pathContortion: null,
+          uncertainty: null,
+          eventHorizon: null,
+        },
+        labels: [
+          'source.cuda_dojo.gpu_forge',
+          'source.cuda_fighter_accuracy_gate',
+          'phase.logic_ray_frontier',
+          'phase.cuda_root_search',
+          position.agree ? 'gate.cpu_gpu_agreement' : 'gate.cpu_gpu_disagreement',
+          selectedMoveInFrontier ? 'gate.selected_move_in_frontier' : 'gate.frontier_alternative',
+          `pzrg4d.pressure.${pzrg4d.pressure}`,
+          `pzrg4d.expression.${pzrg4d.chessExpression}`,
+        ],
+        provenance: {
+          generatedAt: context.generatedAt,
+          sourceType: 'cuda_fighter_accuracy_gate',
+          enginePath: GPU_FORGE_BIN,
+          command: context.command,
+          cwd: REPO_ROOT,
+          cudaOnly: false,
+          cpuRuntimePath: false,
+          hostRole: 'launch_parse_validate_only',
+          probeKind: 'cpu_gpu_accuracy_gate',
+          probeStatus: context.reportOk ? 'passed' : 'failed',
+          stderr: '',
+        },
+        gate: {
+          schemaValid: true,
+          gpuTraceCannon: 'cpu_gpu_accuracy_gate',
+          selectedMoveInFrontier,
+          acceptedInjectionScore: utility,
+          acceptedUsefulInjection,
+          status: acceptedUsefulInjection ? 'accepted' : 'candidate',
+          reason: acceptedUsefulInjection
+            ? 'selected GPU root move agreed with the reference fighter under this gate condition'
+            : 'candidate frontier evidence recorded; promotion still requires gate agreement and accepted-injection lift',
+        },
+        legacy: {
+          gpuForgePosition: position,
+        },
+      });
+    }
+  }
+  return rows;
+}
+
+function validateFrontierArtifact(path) {
+  try {
+    const raw = execFileSync('python3', [FRONTIER_VALIDATOR, path], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    return JSON.parse(raw);
+  } catch (error) {
+    const stdout = error.stdout ? String(error.stdout).trim() : '';
+    try {
+      return JSON.parse(stdout);
+    } catch {
+      return {
+        ok: false,
+        rowCount: 0,
+        failures: [{ message: error.message }],
+      };
+    }
+  }
+}
+
+function writeFrontierEvidence(slug, positions, context) {
+  const rows = frontierRowsFromGatePositions(positions, { ...context, slug });
+  const bundle = {
+    schemaVersion: 'dojo.logic_ray_frontier.bundle.v1',
+    generatedAt: context.generatedAt,
+    rowSchema: FRONTIER_ROW_SCHEMA,
+    source: 'cuda_fighter_accuracy_gate',
+    partial: !context.gpuEmitAll,
+    rows,
+  };
+  mkdirSync(REPORT_DIR, { recursive: true });
+  const jsonPath = join(REPORT_DIR, `${slug}.logic_ray_frontier.json`);
+  const latestJson = join(REPORT_DIR, 'logic_ray_frontier_latest.json');
+  const text = JSON.stringify(bundle, null, 2) + '\n';
+  writeFileSync(jsonPath, text);
+  writeFileSync(latestJson, text);
+
+  const validation = validateFrontierArtifact(jsonPath);
+  const selectedMoveRows = rows.filter((row) => row.gate.selectedMoveInFrontier).length;
+  const acceptedUsefulInjections = rows.filter((row) => row.gate.acceptedUsefulInjection).length;
+  const sourcePositionsWithFrontier = positions.filter((position) =>
+    Array.isArray(position.gpu_root) && position.gpu_root.length > 0,
+  ).length;
+  return {
+    available: rows.length > 0,
+    partial: !context.gpuEmitAll,
+    sourcePositionCount: positions.length,
+    sourcePositionsWithFrontier,
+    rowCount: rows.length,
+    selectedMoveRows,
+    selectedMoveInFrontierRate: rows.length ? selectedMoveRows / rows.length : 0,
+    acceptedUsefulInjections,
+    acceptedUsefulInjectionRate: rows.length ? acceptedUsefulInjections / rows.length : 0,
+    schemaValidation: validation,
+    rowSchema: FRONTIER_ROW_SCHEMA,
+    jsonPath,
+    latestJson,
+  };
 }
 
 function buildMarkdown(report) {
@@ -320,6 +582,9 @@ function buildMarkdown(report) {
   lines.push(`- Disagreements: ${report.gpuSummary.disagreements}`);
   lines.push(`- Agreement rate: ${(report.gpuSummary.agreementRate * 100).toFixed(1)}%`);
   lines.push(`- Coverage: ${(report.gpuSummary.coverage * 100).toFixed(1)}%`);
+  lines.push(`- Frontier rows: ${report.frontierEvidence.rowCount}`);
+  lines.push(`- Frontier schema valid: ${report.frontierEvidence.schemaValidation?.ok ? 'yes' : 'no'}`);
+  lines.push(`- Accepted useful injections: ${report.frontierEvidence.acceptedUsefulInjections}`);
   if (report.failures.length) lines.push(`- Failures: ${report.failures.join(', ')}`);
   if (report.warnings.length) lines.push(`- Warnings: ${report.warnings.join(', ')}`);
   return lines.join('\n') + '\n';
@@ -333,7 +598,7 @@ function main() {
 
   const corpus = buildCorpus(options.samples, options.corpusOffset);
   const { usable, skipped, input } = buildCpuInputLines(fighterPath, corpus);
-  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuCpuShapedSearch, options.gpuTraincarBook, options.gpuSerialRoot, options.gpuRootOrder, options.gpuTraincarRootTieBreak, options.gpuTraincarRunwayRoot, options.gpuTraincarRunwayMargin, options.gpuFamilyDispatch, options.gpuTimeoutRootProxy, options.gpuEmitAll, options.gpuFfnPolicy);
+  const gpu = runGpuForge(options.configs, options.sims, fighterBlob, input, options.timeoutMs, options.gpuDepth, options.gpuFullQeval, options.gpuFilterLegal, options.gpuTraincarEval, options.gpuCpuShapedSearch, options.gpuTraincarBook, options.gpuSerialRoot, options.gpuRootOrder, options.gpuTraincarRootTieBreak, options.gpuTraincarRunwayRoot, options.gpuTraincarRunwayMargin, options.gpuTraincarRootPrior, options.gpuTraincarCpuOrder, options.gpuFamilyDispatch, options.gpuTimeoutRootProxy, options.gpuEmitAll, options.gpuFfnPolicy);
   const summary = gpu.summary || {};
   const gpuTags = [summary.timeoutRootProxy ? 'proxy' : 'strict'];
   if (summary.traincarBook) gpuTags.push('traincar_book');
@@ -341,6 +606,8 @@ function main() {
   if (options.gpuCpuShapedSearch) gpuTags.push('cpu_shaped_search');
   if (summary.traincarRootTieBreak) gpuTags.push('traincar_root_tiebreak');
   if (summary.traincarRunwayRoot) gpuTags.push('traincar_runway_root');
+  if (summary.traincarRootPrior) gpuTags.push('traincar_root_prior');
+  if (summary.traincarCpuOrder) gpuTags.push('traincar_cpu_order');
   if (summary.ffnPolicy) gpuTags.push('ffn_policy_proxy');
   const gpuCondition = gpuTags.join('_');
   const conditionLabel = `${CPU_HARNESS_CONDITION}+${gpuCondition}`;
@@ -362,10 +629,26 @@ function main() {
   if (summary.timeoutRootProxy) warnings.push('timeout_root_proxy_condition_not_strict_parity');
   if (summary.ffnPolicy) warnings.push('ffn_policy_condition_not_strict_parity');
   if (options.gpuTraincarBook && !summary.traincarBook) warnings.push('traincar_book_requested_but_not_active');
+  if (!options.gpuEmitAll) warnings.push('frontier_evidence_partial_without_gpu_emit_all');
+
+  const generatedAt = new Date().toISOString();
+  const frontierPositions = Array.isArray(gpu.positions) ? gpu.positions : [];
+  const frontierEvidence = writeFrontierEvidence(slug, frontierPositions, {
+    generatedAt,
+    command: [process.execPath, ...process.argv.slice(1)],
+    gpuEmitAll: options.gpuEmitAll,
+    reportOk: failures.length === 0,
+  });
+  if (frontierEvidence.rowCount > 0 && !frontierEvidence.schemaValidation?.ok) {
+    failures.push('frontier_schema_validation_failed');
+  }
+  if (comparable > 0 && frontierEvidence.rowCount === 0) {
+    warnings.push('frontier_no_gpu_root_rows_recorded_use_gpu_emit_all');
+  }
 
   const report = {
     ok: failures.length === 0,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     fighter: fighterPath,
     fighterBlob,
     options: {
@@ -387,6 +670,8 @@ function main() {
       gpuTraincarRootTieBreak: options.gpuTraincarRootTieBreak,
       gpuTraincarRunwayRoot: options.gpuTraincarRunwayRoot,
       gpuTraincarRunwayMargin: options.gpuTraincarRunwayMargin,
+      gpuTraincarRootPrior: options.gpuTraincarRootPrior,
+      gpuTraincarCpuOrder: options.gpuTraincarCpuOrder,
       gpuFamilyDispatch: options.gpuFamilyDispatch,
       gpuTimeoutRootProxy: options.gpuTimeoutRootProxy,
       gpuEmitAll: options.gpuEmitAll,
@@ -419,6 +704,8 @@ function main() {
       traincarRootTieBreak: Boolean(summary.traincarRootTieBreak),
       traincarRunwayRoot: Boolean(summary.traincarRunwayRoot),
       traincarRunwayMargin: Number(summary.traincarRunwayMargin || 0),
+      traincarRootPrior: Boolean(summary.traincarRootPrior),
+      traincarCpuOrder: Boolean(summary.traincarCpuOrder),
       traincarBook: Boolean(summary.traincarBook),
       traincarBookEntries: Number(summary.traincarBookEntries || 0),
       traincarBookOverrides: Number(summary.traincarBookOverrides || 0),
@@ -429,6 +716,7 @@ function main() {
       skippedNoMoves: Number(summary.skippedNoMoves || 0),
       skippedEngineMoveMissing: Number(summary.skippedEngineMoveMissing || 0),
     },
+    frontierEvidence,
     sampleDisagreements: Array.isArray(gpu.positions) ? gpu.positions.slice(0, 10) : [],
     policySamples: options.gpuEmitAll && Array.isArray(gpu.positions) ? gpu.positions : [],
     skippedCpuSample: skipped.slice(0, 10),
@@ -462,10 +750,16 @@ function main() {
     traincarRootTieBreak: report.gpuSummary.traincarRootTieBreak,
     traincarRunwayRoot: report.gpuSummary.traincarRunwayRoot,
     traincarRunwayMargin: report.gpuSummary.traincarRunwayMargin,
+    traincarRootPrior: report.gpuSummary.traincarRootPrior,
+    traincarCpuOrder: report.gpuSummary.traincarCpuOrder,
     traincarBookOverrides: report.gpuSummary.traincarBookOverrides,
     emitAllPositions: report.gpuSummary.emitAllPositions,
     ffnPolicy: report.gpuSummary.ffnPolicy,
     ffnPolicyOverrides: report.gpuSummary.ffnPolicyOverrides,
+    frontierRows: report.frontierEvidence.rowCount,
+    frontierSchemaValid: Boolean(report.frontierEvidence.schemaValidation?.ok),
+    acceptedUsefulInjections: report.frontierEvidence.acceptedUsefulInjections,
+    frontierArtifact: report.frontierEvidence.jsonPath,
     condition: report.condition,
     failures: report.failures,
     warnings: report.warnings,

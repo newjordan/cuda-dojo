@@ -37,6 +37,8 @@ function parseArgs(argv) {
     gpuTraincarRootTieBreak: false,
     gpuTraincarRunwayRoot: false,
     gpuTraincarRunwayMargin: 85,
+    gpuTraincarRootPrior: false,
+    gpuTraincarCpuOrder: false,
     gpuFamilyDispatch: false,
     gpuTimeoutRootProxy: false,
     gpuEmitAll: false,
@@ -63,6 +65,8 @@ function parseArgs(argv) {
     else if (arg === '--gpu-traincar-root-tiebreak') options.gpuTraincarRootTieBreak = true;
     else if (arg === '--gpu-traincar-runway-root') options.gpuTraincarRunwayRoot = true;
     else if (arg === '--gpu-traincar-runway-margin') options.gpuTraincarRunwayMargin = Math.max(0, Number(argv[++i] || options.gpuTraincarRunwayMargin));
+    else if (arg === '--gpu-traincar-root-prior') options.gpuTraincarRootPrior = true;
+    else if (arg === '--gpu-traincar-cpu-order') options.gpuTraincarCpuOrder = true;
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
     else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
     else if (arg === '--gpu-emit-all') options.gpuEmitAll = true;
@@ -94,6 +98,8 @@ function runOne(entry, options) {
   if (options.gpuRootOrder) args.push('--gpu-root-order');
   if (options.gpuTraincarRootTieBreak) args.push('--gpu-traincar-root-tiebreak');
   if (options.gpuTraincarRunwayRoot) args.push('--gpu-traincar-runway-root', '--gpu-traincar-runway-margin', String(options.gpuTraincarRunwayMargin));
+  if (options.gpuTraincarRootPrior) args.push('--gpu-traincar-root-prior');
+  if (options.gpuTraincarCpuOrder) args.push('--gpu-traincar-cpu-order');
   if (options.gpuFamilyDispatch) args.push('--gpu-family-dispatch');
   if (options.gpuTimeoutRootProxy) args.push('--gpu-timeout-root-proxy');
   if (options.gpuEmitAll) args.push('--gpu-emit-all');
@@ -140,14 +146,18 @@ function buildMarkdown(summary) {
   lines.push(`Average agreement: ${(summary.averageAgreementRate * 100).toFixed(1)}%`);
   lines.push(`Exact 1:1 fighters: ${summary.exactCount}/${summary.total}`);
   lines.push(`Proxy-labeled fighters: ${summary.proxyCount}/${summary.total}`);
+  lines.push(`Frontier rows: ${summary.frontierRowCount}`);
+  lines.push(`Accepted useful injections: ${summary.acceptedUsefulInjections}`);
   lines.push('');
-  lines.push('| Fighter | Status | Agreement | Coverage | Comparable | Condition | Report |');
-  lines.push('|---|---:|---:|---:|---:|---|---|');
+  lines.push('| Fighter | Status | Agreement | Coverage | Comparable | Frontier Rows | Accepted | Condition | Report |');
+  lines.push('|---|---:|---:|---:|---:|---:|---:|---|---|');
   for (const item of summary.results) {
     const status = item.ok ? 'PASS' : 'FAIL';
     const agreement = item.agreementRate == null ? 'n/a' : `${(item.agreementRate * 100).toFixed(1)}%`;
     const coverage = item.coverage == null ? 'n/a' : `${(item.coverage * 100).toFixed(1)}%`;
     const comparable = item.comparablePositions ?? 'n/a';
+    const frontierRows = item.frontierEvidence?.rowCount ?? item.frontierRows ?? 0;
+    const accepted = item.frontierEvidence?.acceptedUsefulInjections ?? item.acceptedUsefulInjections ?? 0;
     const condition = item.condition?.label ||
       (item.gpuSummary?.timeoutRootProxy ||
       item.gpuSummary?.ffnPolicy ||
@@ -156,7 +166,7 @@ function buildMarkdown(summary) {
         ? 'proxy'
         : 'strict');
     const report = item.mdPath ? basename(item.mdPath) : 'n/a';
-    lines.push(`| ${item.name} | ${status} | ${agreement} | ${coverage} | ${comparable} | ${condition} | ${report} |`);
+    lines.push(`| ${item.name} | ${status} | ${agreement} | ${coverage} | ${comparable} | ${frontierRows} | ${accepted} | ${condition} | ${report} |`);
   }
   lines.push('');
   lines.push(`Pass: ${summary.passCount}/${summary.total}`);
@@ -184,6 +194,13 @@ function main() {
     item.warnings?.includes('ffn_policy_condition_not_strict_parity') ||
     item.condition?.gpu?.includes('proxy'),
   ).length;
+  const frontierRowCount = results.reduce((sum, item) =>
+    sum + Number(item.frontierEvidence?.rowCount || item.frontierRows || 0), 0);
+  const acceptedUsefulInjections = results.reduce((sum, item) =>
+    sum + Number(item.frontierEvidence?.acceptedUsefulInjections || item.acceptedUsefulInjections || 0), 0);
+  const frontierSchemaValidCount = results.filter((item) =>
+    item.frontierEvidence?.schemaValidation?.ok || item.frontierSchemaValid,
+  ).length;
 
   const summary = {
     ok: failed.length === 0,
@@ -194,6 +211,9 @@ function main() {
     averageAgreementRate,
     exactCount,
     proxyCount,
+    frontierRowCount,
+    acceptedUsefulInjections,
+    frontierSchemaValidCount,
     failed,
     results,
   };
@@ -211,6 +231,9 @@ function main() {
     averageAgreementRate: summary.averageAgreementRate,
     exactCount: summary.exactCount,
     proxyCount: summary.proxyCount,
+    frontierRowCount: summary.frontierRowCount,
+    acceptedUsefulInjections: summary.acceptedUsefulInjections,
+    frontierSchemaValidCount: summary.frontierSchemaValidCount,
     failed: summary.failed,
     jsonPath,
     mdPath,

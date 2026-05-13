@@ -204,6 +204,7 @@ __constant__ int C_FULL_QEVAL;
 __constant__ int C_FILTER_LEGAL;
 __constant__ int C_TRAINCAR_EVAL;
 __constant__ int C_CPU_SHAPED_SEARCH;
+__constant__ int C_TRAINCAR_CPU_ORDER;
 
 // ============================================================================
 // DATA STRUCTURES
@@ -369,6 +370,33 @@ static int hostTraincarRootTieScore(const Board* board, const Move* move) {
     if (toFile == 3 || toFile == 4) score += advance == 16 ? 430 : 260;
     if ((fromFile == 1 || fromFile == 6) && advance == 16) score += 90;
     if ((fromFile == 0 || fromFile == 7) && advance == 16) score -= 60;
+  }
+
+  return score;
+}
+
+static int hostTraincarRootPrior(const Board* board, const Move* move) {
+  int moving = board->pieces[move->from];
+  if (!moving) return 0;
+  int movingType = moving & 7;
+  int fromRank = move->from / 8;
+  int fromFile = move->from % 8;
+  int toRank = move->to / 8;
+  int toFile = move->to % 8;
+  int score = 0;
+
+  if (movingType == KNIGHT) {
+    if ((fromRank == 7 || fromRank == 0) && (toFile == 2 || toFile == 5)) score += 70;
+    if (toFile == 0 || toFile == 7) score -= 25;
+    if (toRank >= 2 && toRank <= 5 && toFile >= 2 && toFile <= 5) score += 12;
+  } else if (movingType == BISHOP) {
+    if ((fromFile == 2 && toFile == 1) || (fromFile == 5 && toFile == 6)) score += 180;
+    if (toRank >= 2 && toRank <= 5 && toFile >= 2 && toFile <= 5) score += 10;
+  } else if (movingType == PAWN) {
+    int advance = move->from > move->to ? move->from - move->to : move->to - move->from;
+    if (toFile == 3 || toFile == 4) score += advance == 16 ? 43 : 26;
+    if ((fromFile == 1 || fromFile == 6) && advance == 16) score += 9;
+    if ((fromFile == 0 || fromFile == 7) && advance == 16) score -= 6;
   }
 
   return score;
@@ -1630,6 +1658,10 @@ __device__ void orderMoves(Board* b, Move* moves, int count) {
   // Then insertion sort (stable, good for nearly-sorted)
   int scores[MAX_MOVES];
   for (int i = 0; i < count; i++) {
+    if (C_TRAINCAR_CPU_ORDER) {
+      scores[i] = count - i;
+      continue;
+    }
     int captured = b->pieces[moves[i].to];
     if (captured) {
       int attacker = b->pieces[moves[i].from] & 7;
@@ -2156,6 +2188,8 @@ int main(int argc, char** argv) {
   int traincarRootTieBreak = 0;
   int traincarRunwayRoot = 0;
   float traincarRunwayMargin = 85.0f;
+  int traincarRootPrior = 0;
+  int traincarCpuOrder = 0;
   int familyDispatch = 0;
   int timeoutRootProxy = 0;
   int traincarBook = 0;
@@ -2217,6 +2251,14 @@ int main(int argc, char** argv) {
       traincarRunwayMargin = (float)atof(argv[++i]);
       if (traincarRunwayMargin < 0.0f) traincarRunwayMargin = 0.0f;
       if (traincarRunwayMargin > 500.0f) traincarRunwayMargin = 500.0f;
+      continue;
+    }
+    if (strcmp(argv[i], "--traincar-root-prior") == 0) {
+      traincarRootPrior = 1;
+      continue;
+    }
+    if (strcmp(argv[i], "--traincar-cpu-order") == 0) {
+      traincarCpuOrder = 1;
       continue;
     }
     if (strcmp(argv[i], "--family-dispatch") == 0) {
@@ -2299,6 +2341,8 @@ int main(int argc, char** argv) {
   if (rootOrder) fprintf(stderr, "[dojo] root move ordering: enabled\n");
   if (traincarRootTieBreak) fprintf(stderr, "[dojo] traincar root tie-break: enabled\n");
   if (traincarRunwayRoot) fprintf(stderr, "[dojo] traincar runway root: enabled (margin %.1f)\n", traincarRunwayMargin);
+  if (traincarRootPrior) fprintf(stderr, "[dojo] traincar root prior: enabled\n");
+  if (traincarCpuOrder) fprintf(stderr, "[dojo] traincar CPU-order ablation: enabled\n");
   if (familyDispatch) fprintf(stderr, "[dojo] source-family dispatch: enabled\n");
   if (timeoutRootProxy) fprintf(stderr, "[dojo] timeout root proxy: enabled\n");
   if (traincarBook) fprintf(stderr, "[dojo] traincar book: enabled (%d entries)\n", traincarBookCount);
@@ -2312,6 +2356,7 @@ int main(int argc, char** argv) {
   cudaMemcpyToSymbol(C_FILTER_LEGAL, &filterLegal, sizeof(int));
   cudaMemcpyToSymbol(C_TRAINCAR_EVAL, &traincarEval, sizeof(int));
   cudaMemcpyToSymbol(C_CPU_SHAPED_SEARCH, &cpuShapedSearch, sizeof(int));
+  cudaMemcpyToSymbol(C_TRAINCAR_CPU_ORDER, &traincarCpuOrder, sizeof(int));
 
   // Allocate GPU memory
   Board *d_board; cudaMalloc(&d_board, sizeof(Board));
@@ -2465,6 +2510,9 @@ int main(int argc, char** argv) {
     cudaMemcpy(h_searchScores, d_searchScores, numMoves * sizeof(float), cudaMemcpyDeviceToHost);
     for (int i = 0; i < numMoves; i++) {
       if (!isfinite(h_searchScores[i]) || fabsf(h_searchScores[i]) > 99999.0f) h_searchScores[i] = -99999.0f;
+      if (traincarRootPrior && fighterFamily == FIGHTER_FAMILY_TRAINCAR && h_searchScores[i] > -99998.0f) {
+        h_searchScores[i] += (float)hostTraincarRootPrior(&board, &h_moves[i]);
+      }
     }
 
     // Find best move by search score
@@ -2619,13 +2667,15 @@ int main(int argc, char** argv) {
   printf("\"elapsed\":%.2f,\"posPerSec\":%.1f,", elapsed, totalPos > 0 ? totalPos/elapsed : 0.0);
   printf("\"searchDepth\":%d,", searchDepth);
   printf("\"fighterFamily\":\"%s\",", fighterFamilyName(fighterFamily));
-  printf("\"familyDispatch\":%s,\"timeoutRootProxy\":%s,\"cpuShapedSearch\":%s,\"traincarRootTieBreak\":%s,\"traincarRunwayRoot\":%s,\"traincarRunwayMargin\":%.1f,",
+  printf("\"familyDispatch\":%s,\"timeoutRootProxy\":%s,\"cpuShapedSearch\":%s,\"traincarRootTieBreak\":%s,\"traincarRunwayRoot\":%s,\"traincarRunwayMargin\":%.1f,\"traincarRootPrior\":%s,\"traincarCpuOrder\":%s,",
     familyDispatch ? "true" : "false",
     timeoutRootProxy ? "true" : "false",
     cpuShapedSearch ? "true" : "false",
     traincarRootTieBreak ? "true" : "false",
     traincarRunwayRoot ? "true" : "false",
-    traincarRunwayMargin);
+    traincarRunwayMargin,
+    traincarRootPrior ? "true" : "false",
+    traincarCpuOrder ? "true" : "false");
   printf("\"emitAllPositions\":%s,", emitAllPositions ? "true" : "false");
   printf("\"traincarBook\":%s,\"traincarBookEntries\":%d,\"traincarBookOverrides\":%d,\"traincarBookMisses\":%d,",
     traincarBook ? "true" : "false",

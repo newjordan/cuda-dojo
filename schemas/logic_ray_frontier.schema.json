@@ -1,0 +1,603 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://theforge.local/schemas/logic_ray_frontier.schema.json",
+  "title": "CUDA Dojo logicRayFrontier Row",
+  "description": "Canonical CUDA Dojo frontier row for GPU-derived chess root evidence, Rayfront/PZRG/FrostMatrix semantics, OmniFold placeholders, chronometric sidecars, and promotion gates.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "rootId",
+    "rootFen",
+    "rootIndex",
+    "sourceEngine",
+    "sourceKernel",
+    "move",
+    "rank",
+    "path",
+    "scoreCp",
+    "scoreGapFromBestCp",
+    "pathProbability",
+    "risk",
+    "lockIn",
+    "utility",
+    "survivalBucket",
+    "conversionBucket",
+    "pzrg4d",
+    "rayfrontFamily",
+    "rayfrontMetrics",
+    "omnifoldFamily",
+    "chrono",
+    "labels",
+    "provenance",
+    "gate"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://theforge.local/schemas/logic_ray_frontier.schema.json"
+    },
+    "schemaVersion": {
+      "const": "dojo.logic_ray_frontier.v1"
+    },
+    "rootId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rootFen": {
+      "type": "string",
+      "minLength": 10
+    },
+    "rootIndex": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sourceEngine": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceKernel": {
+      "type": "string",
+      "minLength": 1
+    },
+    "move": {
+      "$ref": "#/$defs/uciMove"
+    },
+    "rank": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "path": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/uciMove"
+      }
+    },
+    "scoreCp": {
+      "type": "number"
+    },
+    "scoreGapFromBestCp": {
+      "type": "number",
+      "minimum": 0
+    },
+    "pathProbability": {
+      "$ref": "#/$defs/probability"
+    },
+    "risk": {
+      "$ref": "#/$defs/probability"
+    },
+    "lockIn": {
+      "$ref": "#/$defs/probability"
+    },
+    "utility": {
+      "type": "number"
+    },
+    "survivalBucket": {
+      "type": "string",
+      "enum": [
+        "stable_development",
+        "survival",
+        "trap_sacrifice",
+        "conversion_attack",
+        "quarantine",
+        "unknown"
+      ]
+    },
+    "conversionBucket": {
+      "type": "string",
+      "enum": [
+        "candidate",
+        "conversion",
+        "terminal",
+        "survival_repair",
+        "quarantine",
+        "unknown"
+      ]
+    },
+    "pzrg4d": {
+      "$ref": "#/$defs/pzrg4d"
+    },
+    "rayfrontFamily": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rayfrontMetrics": {
+      "$ref": "#/$defs/rayfrontMetrics"
+    },
+    "omnifoldFamily": {
+      "$ref": "#/$defs/omnifoldFamily"
+    },
+    "chrono": {
+      "$ref": "#/$defs/chrono"
+    },
+    "sourceTemporal": {
+      "$ref": "#/$defs/sourceTemporal"
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "gate": {
+      "$ref": "#/$defs/gate"
+    },
+    "legacy": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "uciMove": {
+      "type": "string",
+      "pattern": "^(?:[a-h][1-8][a-h][1-8][qrbn]?|0000)$"
+    },
+    "probability": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "pzrg4d": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "schema",
+        "geometry",
+        "pressure",
+        "chessExpression",
+        "actionGradient",
+        "relationScope",
+        "confidence",
+        "evidence"
+      ],
+      "properties": {
+        "schema": {
+          "const": "pzrg_4d_label_v1"
+        },
+        "geometry": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pressure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "chessExpression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actionGradient": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relationScope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "rayfrontMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frontierWidth",
+        "emittedWidth",
+        "rootOrderScoreCp",
+        "scoreGapFromBestCp",
+        "softmaxTemperatureCp",
+        "schedulerFrontierSeeded",
+        "schedulerEvalRequests",
+        "evalBackend",
+        "evalFallbackDispatches",
+        "evalFailedDispatches",
+        "runtimeUsed"
+      ],
+      "properties": {
+        "frontierWidth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "emittedWidth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rootOrderScoreCp": {
+          "type": "number"
+        },
+        "scoreGapFromBestCp": {
+          "type": "number",
+          "minimum": 0
+        },
+        "softmaxTemperatureCp": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "schedulerFrontierSeeded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "schedulerFrontierPops": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "schedulerEvalRequests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "schedulerEvalRequestDepth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evalBackend": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evalBucketIdx": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evalBucketSize": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evalRequestCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evalResultCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evalDroppedRequests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evalFallbackDispatches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evalFailedDispatches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "runtimeUsed": {
+          "type": "boolean"
+        },
+        "reorderedRootMoves": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rankCoverage": {
+          "$ref": "#/$defs/probability"
+        }
+      }
+    },
+    "omnifoldFamily": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "families"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["placeholder", "attached", "quarantine"]
+        },
+        "families": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "selectedFamily": {
+          "type": ["string", "null"]
+        },
+        "offManifoldAudit": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        }
+      }
+    },
+    "chrono": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "timePhase",
+        "pressureDrift",
+        "relationDrift",
+        "pathContortion",
+        "uncertainty",
+        "eventHorizon"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["placeholder", "sidecar", "attached", "quarantine"]
+        },
+        "timePhase": {
+          "type": ["string", "null"]
+        },
+        "pressureDrift": {
+          "type": ["number", "null"]
+        },
+        "relationDrift": {
+          "type": ["number", "null"]
+        },
+        "pathContortion": {
+          "type": ["number", "null"]
+        },
+        "uncertainty": {
+          "type": ["number", "null"]
+        },
+        "eventHorizon": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "sourceTemporal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceFamily",
+        "sourceArtifact",
+        "sourceArtifactSha256",
+        "sourceSequenceId",
+        "sourcePly",
+        "sourcePlyBasis",
+        "temporalEvidenceClass",
+        "transitionVerified"
+      ],
+      "properties": {
+        "sourceFamily": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceArtifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceArtifactSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "sourceSequenceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourcePly": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourcePlyBasis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "previousFenHash": {
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "nextFenHash": {
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "temporalEvidenceClass": {
+          "type": "string",
+          "enum": [
+            "explicit_game_trajectory",
+            "recorded_source_sequence",
+            "recorded_source_order",
+            "gpu_refcuda_verified_transition_neighbor"
+          ]
+        },
+        "sourceOrderConfidence": {
+          "type": "string",
+          "enum": [
+            "explicit",
+            "side_toggle_segment",
+            "recorded_order_only",
+            "gpu_refcuda_verified_both_neighbors",
+            "gpu_refcuda_verified_previous_neighbor",
+            "gpu_refcuda_verified_next_neighbor",
+            "gpu_refcuda_verified_neighbor"
+          ]
+        },
+        "transitionVerified": {
+          "type": "boolean"
+        },
+        "gpuTransitionVerification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "verifierArtifact",
+            "verifierArtifactSha256",
+            "previousEdgeStatus",
+            "nextEdgeStatus",
+            "gpuVerifiedPreviousTransition",
+            "gpuVerifiedNextTransition",
+            "gpuVerifiedBothNeighbors",
+            "clockPolicy"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": "dojo.gpu_refcuda_transition_evidence.v1"
+            },
+            "verifierArtifact": {
+              "type": "string",
+              "minLength": 1
+            },
+            "verifierArtifactSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "previousEdgeStatus": {
+              "type": ["string", "null"]
+            },
+            "nextEdgeStatus": {
+              "type": ["string", "null"]
+            },
+            "gpuVerifiedPreviousTransition": {
+              "type": "boolean"
+            },
+            "gpuVerifiedNextTransition": {
+              "type": "boolean"
+            },
+            "gpuVerifiedBothNeighbors": {
+              "type": "boolean"
+            },
+            "clockPolicy": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generatedAt",
+        "sourceType",
+        "enginePath",
+        "command",
+        "cwd",
+        "cudaOnly",
+        "cpuRuntimePath",
+        "hostRole"
+      ],
+      "properties": {
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sourceType": {
+          "type": "string",
+          "enum": [
+            "cuda_search_runtime_probe",
+            "cuda_trace_cannon",
+            "cuda_fighter_accuracy_gate",
+            "quarantine_import"
+          ]
+        },
+        "enginePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cudaOnly": {
+          "type": "boolean"
+        },
+        "cpuRuntimePath": {
+          "const": false
+        },
+        "hostRole": {
+          "type": "string",
+          "enum": [
+            "launch_parse_validate_only",
+            "receipt_only",
+            "quarantine"
+          ]
+        },
+        "probeKind": {
+          "type": "string"
+        },
+        "probeStatus": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaValid",
+        "gpuTraceCannon",
+        "selectedMoveInFrontier",
+        "acceptedInjectionScore",
+        "acceptedUsefulInjection",
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "schemaValid": {
+          "type": "boolean"
+        },
+        "gpuTraceCannon": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectedMoveInFrontier": {
+          "type": "boolean"
+        },
+        "acceptedInjectionScore": {
+          "type": "number"
+        },
+        "acceptedUsefulInjection": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["candidate", "accepted", "rejected", "quarantine"]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

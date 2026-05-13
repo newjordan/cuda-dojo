@@ -124,6 +124,69 @@ __global__ void k_in_check_batched(const Position* s, int n, int* out) {
     out[idx] = in_check(&s[idx], s[idx].side) ? 1 : 0;
 }
 
+// Output layout:
+//  0 from square
+//  1 to square
+//  2 moving piece before move
+//  3 captured piece on destination before move
+//  4 move flags
+//  5 side before move
+//  6 destination attacked by mover side before move
+//  7 destination attacked by opponent before move
+//  8 destination attacked by mover side after move
+//  9 destination attacked by opponent after move
+// 10 mover in check before move
+// 11 opponent in check after move
+// 12 opponent legal replies after move
+// 13 tactical contact balance after move: defended - attacked
+// 14 move is capture-like
+// 15 move is promotion
+__global__ void k_tactical_contact(const Position* s, Move mv, int* out) {
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    const int from = move_from(mv);
+    const int to = move_to(mv);
+    const int flags = move_flags(mv);
+    const int side_before = s->side;
+    const int opponent = 1 - side_before;
+    const int moving_piece = (from >= 0 && from < 64) ? s->board[from] : EMPTY;
+    const int captured_piece = (to >= 0 && to < 64) ? s->board[to] : EMPTY;
+    const int us_before = is_square_attacked(s, to, side_before) ? 1 : 0;
+    const int them_before = is_square_attacked(s, to, opponent) ? 1 : 0;
+    const int in_check_before = in_check(s, side_before) ? 1 : 0;
+
+    Position child = *s;
+    make_move(&child, mv);
+    const int us_after = is_square_attacked(&child, to, side_before) ? 1 : 0;
+    const int them_after = is_square_attacked(&child, to, opponent) ? 1 : 0;
+    const int gives_check_after = in_check(&child, child.side) ? 1 : 0;
+
+    Move pseudo[MAX_MOVES];
+    int n = generate_moves(&child, pseudo);
+    int replies = 0;
+    for (int i = 0; i < n; ++i) {
+        Position reply = child;
+        make_move(&reply, pseudo[i]);
+        if (!in_check(&reply, 1 - reply.side)) replies++;
+    }
+
+    out[0] = from;
+    out[1] = to;
+    out[2] = moving_piece;
+    out[3] = captured_piece;
+    out[4] = flags;
+    out[5] = side_before;
+    out[6] = us_before;
+    out[7] = them_before;
+    out[8] = us_after;
+    out[9] = them_after;
+    out[10] = in_check_before;
+    out[11] = gives_check_after;
+    out[12] = replies;
+    out[13] = us_after - them_after;
+    out[14] = (flags == FLAG_CAPTURE || flags == FLAG_EP || captured_piece != EMPTY) ? 1 : 0;
+    out[15] = (flags == FLAG_PROMO || move_promo(mv) != 0) ? 1 : 0;
+}
+
 } // anonymous namespace
 
 // =============================================================================
@@ -280,6 +343,28 @@ int refc_position_size(void) {
     return (int)sizeof(Position);
 }
 
+/// Semantic equality for two parsed/applied positions. This deliberately
+/// excludes clocks by default because recorded source books often normalize
+/// halfmove/fullmove counters even when the board transition is real.
+/// Returns 1 equal, 0 different, negative on bad input.
+int refc_position_equal_semantic(const Position* a, const Position* b,
+                                 int include_clocks) {
+    if (!a || !b) return -1;
+    for (int i = 0; i < 64; ++i) {
+        if (a->board[i] != b->board[i]) return 0;
+    }
+    if (a->side != b->side) return 0;
+    if (a->castle != b->castle) return 0;
+    if (a->ep != b->ep) return 0;
+    if (a->kingPos[0] != b->kingPos[0]) return 0;
+    if (a->kingPos[1] != b->kingPos[1]) return 0;
+    if (include_clocks) {
+        if (a->halfmove != b->halfmove) return 0;
+        if (a->fullmove != b->fullmove) return 0;
+    }
+    return 1;
+}
+
 // ============================================================================
 // Batched FFI — process N positions in a single launch.
 //
@@ -358,6 +443,26 @@ int refc_is_check_batched(const Position* positions, int n, int* out) {
     k_in_check_batched<<<n, 1>>>(d_pos, n, d_out);
     cudaDeviceSynchronize();
     cudaMemcpy(out, d_out, sizeof(int) * n, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_pos);
+    cudaFree(d_out);
+    return 0;
+}
+
+/// Tactical contact summary for one legal move. All chess attack/check/reply
+/// calculations run ON GPU; host only copies the compact integer vector back.
+int refc_tactical_contact(const Position* pos, int32_t mv, int* out, int out_n) {
+    if (!pos || !out || out_n < 16) return -1;
+
+    Position* d_pos = nullptr;
+    int* d_out = nullptr;
+    cudaMalloc(&d_pos, sizeof(Position));
+    cudaMalloc(&d_out, sizeof(int) * 16);
+
+    cudaMemcpy(d_pos, pos, sizeof(Position), cudaMemcpyHostToDevice);
+    k_tactical_contact<<<1, 1>>>(d_pos, mv, d_out);
+    cudaDeviceSynchronize();
+    cudaMemcpy(out, d_out, sizeof(int) * 16, cudaMemcpyDeviceToHost);
 
     cudaFree(d_pos);
     cudaFree(d_out);

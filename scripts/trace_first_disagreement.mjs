@@ -28,6 +28,8 @@ function parseArgs(argv) {
     gpuTraincarRootTieBreak: false,
     gpuTraincarRunwayRoot: false,
     gpuTraincarRunwayMargin: 85,
+    gpuTraincarRootPrior: false,
+    gpuTraincarCpuOrder: false,
     gpuFamilyDispatch: false,
     gpuTimeoutRootProxy: false,
     gpuEmitAll: false,
@@ -55,6 +57,8 @@ function parseArgs(argv) {
     else if (arg === '--gpu-traincar-root-tiebreak') options.gpuTraincarRootTieBreak = true;
     else if (arg === '--gpu-traincar-runway-root') options.gpuTraincarRunwayRoot = true;
     else if (arg === '--gpu-traincar-runway-margin') options.gpuTraincarRunwayMargin = Math.max(0, Number(argv[++i] || options.gpuTraincarRunwayMargin));
+    else if (arg === '--gpu-traincar-root-prior') options.gpuTraincarRootPrior = true;
+    else if (arg === '--gpu-traincar-cpu-order') options.gpuTraincarCpuOrder = true;
     else if (arg === '--gpu-family-dispatch') options.gpuFamilyDispatch = true;
     else if (arg === '--gpu-timeout-root-proxy') options.gpuTimeoutRootProxy = true;
     else if (arg === '--gpu-emit-all') options.gpuEmitAll = true;
@@ -124,6 +128,8 @@ function runGpuTrace(options, fighterBlob, fen, cpuMove, legalMoves) {
   if (options.gpuRootOrder) forgeArgs.push('--root-order');
   if (options.gpuTraincarRootTieBreak) forgeArgs.push('--traincar-root-tiebreak');
   if (options.gpuTraincarRunwayRoot) forgeArgs.push('--traincar-runway-root', '--traincar-runway-margin', String(options.gpuTraincarRunwayMargin));
+  if (options.gpuTraincarRootPrior) forgeArgs.push('--traincar-root-prior');
+  if (options.gpuTraincarCpuOrder) forgeArgs.push('--traincar-cpu-order');
   if (options.gpuFamilyDispatch) forgeArgs.push('--family-dispatch');
   if (options.gpuTimeoutRootProxy) forgeArgs.push('--timeout-root-proxy');
   if (options.gpuEmitAll) forgeArgs.push('--emit-all');
