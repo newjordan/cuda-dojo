@@ -7,15 +7,14 @@ Mirrors the architecture in transformer_v3_frostmatrix.cu exactly:
   - N_GEO_CHANNELS = 55 (4 base + 51 from 17 geometry encoders)
   - N_FAMILIES = 33, N_UNKNOWNS = 32, N_FAM_NODES = 65
   - Highway attention (3 directions), board→family cross-attention, SwiGLU FFN
-  - Policy head: linear(D_MODEL, VOCAB_SIZE=513)
+  - Split policy head: from_sq [64] + to_sq [64] (effective 4096 move space)
   - Value head: linear(D_MODEL, 1) + tanh → [-1, 1]
 
 Training data schema (training_v2.jsonl):
   {"fen": "...", "family_id": 0, "move": "g1f3", "outcome": 1, "tokenizer": "v2"}
 
-Move vocabulary: UCI strings are mapped to indices 0..511 by a vocabulary built
-from the training corpus (first pass). Index 512 is reserved for unknown moves.
-VOCAB_SIZE = 513 = 512 known moves + 1 unknown.
+Move encoding: UCI moves are split into from_sq [0,63] and to_sq [0,63].
+Each is a separate 64-way classifier — 64x denser gradient per class than a flat 4096-way head.
 
 Weight export: raw float32 binary files named to match TransformerWeights struct
 fields in the .cu file, plus a JSON manifest.
@@ -64,11 +63,12 @@ HW_SMOOTH_SIGMA = 2.0
 
 N_GEO_CHANNELS = 55       # 4 base + 51 extended (17 geometry encoders G1-G17)
 
-BATCH_SIZE     = 256
+BATCH_SIZE     = 1024
 
 # ─── Default paths ────────────────────────────────────────────────────────────
 
 DEFAULT_DATA_PATH = "/srv/models-hdd/chess-games/training_v2.jsonl"
+DEFAULT_PREPROCESSED_PATH = "/srv/models-hdd/chess-games/training_v2_preprocessed.pt"
 DEFAULT_CKPT_DIR  = "/srv/models-hdd/chess-games/training_runs/v3_frostmatrix"
 
 # ─── Move encoding — deterministic from_sq*64+to_sq ──────────────────────────
@@ -77,17 +77,18 @@ DEFAULT_CKPT_DIR  = "/srv/models-hdd/chess-games/training_runs/v3_frostmatrix"
 
 _UCI_FILE = {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, 'h': 7}
 
-def uci_to_policy_idx(uci: str) -> int:
-    """UCI move → policy index in [0, 4095] = from_sq*64 + to_sq.
+def uci_to_policy_idx(uci: str):
+    """UCI move → (from_sq, to_sq) tuple, both in [0, 63].
+    Combined: from_sq*64+to_sq for backward compat with 4096-way encoding.
     Board layout matches fen_to_board: index 0 = a8, index 63 = h1."""
     if len(uci) < 4:
-        return 0
+        return 0, 0
     try:
         from_sq = (8 - int(uci[1])) * 8 + _UCI_FILE[uci[0]]
         to_sq   = (8 - int(uci[3])) * 8 + _UCI_FILE[uci[2]]
-        return from_sq * 64 + to_sq
+        return from_sq, to_sq
     except (KeyError, ValueError, IndexError):
-        return 0
+        return 0, 0
 
 
 # ─── FEN → board tensor ───────────────────────────────────────────────────────
@@ -346,7 +347,8 @@ class FrostMatrixDataset(IterableDataset):
       board_tokens: LongTensor [64]       — piece type at each square (0-12)
       family_id:    LongTensor []          — opening family (0..N_FAMILIES-1)
       geo_vecs:     FloatTensor [64, 55]  — geometry features per square
-      move_idx:     LongTensor []          — policy target in [0, VOCAB_SIZE-1]
+      move_from:    LongTensor []          — from-square [0, 63]
+      move_to:      LongTensor []          — to-square [0, 63]
       outcome:      FloatTensor []         — value target in {-1.0, 0.0, 1.0}
     """
 
@@ -389,20 +391,85 @@ class FrostMatrixDataset(IterableDataset):
                 geo_base = build_geo_vector(board, side, castling)
                 geo_vecs = [geo_base] * N_BOARD_SQ   # [64 × 55]
 
-                # Move → deterministic policy index (from_sq*64+to_sq)
-                move_idx = uci_to_policy_idx(move_uci)
+                # Move → split from_sq/to_sq indices
+                move_from, move_to = uci_to_policy_idx(move_uci)
 
                 yield (
                     torch.tensor(board, dtype=torch.long),               # [64]
                     torch.tensor(family_id, dtype=torch.long),           # scalar
                     torch.tensor(geo_vecs, dtype=torch.float32),         # [64, 55]
-                    torch.tensor(move_idx, dtype=torch.long),            # scalar
+                    torch.tensor(move_from, dtype=torch.long),           # from_sq scalar
+                    torch.tensor(move_to, dtype=torch.long),             # to_sq scalar
                     torch.tensor(outcome, dtype=torch.float32),          # scalar
                 )
 
                 n += 1
                 if self.max_samples is not None and n >= self.max_samples:
                     return
+
+
+# ─── Preprocessed Dataset — loads from .pt tensors (fast, no JSON parsing) ───
+
+class PreprocessedFrostMatrixDataset(Dataset):
+    """
+    Loads preprocessed FrostMatrix V3 training data from a .pt file.
+
+    The .pt file contains:
+      board_tokens: [N, 64]  int8      piece type per square
+      family_ids:   [N]      int16     opening family index
+      move_froms:   [N]      int8      from-square
+      move_tos:     [N]      int8      to-square
+      outcomes:     [N]      float16   value target
+
+    This is 20-50x faster than JSONL streaming because:
+      1. No line-by-line JSON parsing
+      2. No per-sample FEN parsing
+      3. No per-sample tensor creation (tensors already materialized)
+      4. Can use multi-worker DataLoader (unlike IterableDataset)
+      5. OS page cache holds the .pt file after first epoch
+
+    geo_vecs is returned as a zero tensor since geo projection is disabled
+    in the current model architecture (destroyed 84%→27% accuracy).
+    """
+
+    def __init__(self, pt_path: str, max_samples: Optional[int] = None):
+        print(f"[dataset] loading preprocessed data from {pt_path}...")
+        t_load = time.time()
+        data = torch.load(pt_path, map_location='cpu', weights_only=True)
+        print(f"[dataset] loaded {data['n_samples']:,} samples in {time.time() - t_load:.1f}s")
+
+        self.board_tokens = data['board_tokens']  # [N, 64] int8
+        self.family_ids   = data['family_ids']    # [N] int16
+        self.move_froms   = data['move_froms']    # [N] int8
+        self.move_tos     = data['move_tos']      # [N] int8
+        self.outcomes     = data['outcomes']      # [N] float16
+
+        n = self.board_tokens.size(0)
+        if max_samples is not None and max_samples < n:
+            n = max_samples
+            self.board_tokens = self.board_tokens[:n]
+            self.family_ids   = self.family_ids[:n]
+            self.move_froms   = self.move_froms[:n]
+            self.move_tos     = self.move_tos[:n]
+            self.outcomes     = self.outcomes[:n]
+
+        self._n = n
+        print(f"[dataset] using {self._n:,} samples")
+
+    def __len__(self) -> int:
+        return self._n
+
+    def __getitem__(self, idx: int) -> Tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,
+    ]:
+        return (
+            self.board_tokens[idx].long(),      # [64] long  (embedding expects long)
+            self.family_ids[idx].long(),         # scalar long
+            torch.zeros(64, N_GEO_CHANNELS, dtype=torch.float32),  # geo: disabled
+            self.move_froms[idx].long(),         # scalar long
+            self.move_tos[idx].long(),           # scalar long
+            self.outcomes[idx].float(),          # scalar float32
+        )
 
 
 # ─── Model — FrostMatrix Graph Transformer v3 ────────────────────────────────
@@ -688,8 +755,11 @@ class FrostMatrixV3(nn.Module):
         self.layers = nn.ModuleList([TransformerLayer() for _ in range(N_LAYERS)])
 
         # ── Output heads ──────────────────────────────────────────────────────
-        self.policy_W = nn.Linear(D_MODEL, VOCAB_SIZE, bias=False)
-        self.value_W  = nn.Linear(D_MODEL, 1, bias=True)
+        # Split policy: two 64-way classifiers (from_sq × to_sq → 4096 effective moves).
+        # 64x denser gradient per class than a flat 4096-way head.
+        self.policy_from_W = nn.Linear(D_MODEL, 64, bias=False)  # where to move FROM
+        self.policy_to_W   = nn.Linear(D_MODEL, 64, bias=False)  # where to move TO
+        self.value_W       = nn.Linear(D_MODEL, 1, bias=True)
 
         self._init_weights()
 
@@ -733,8 +803,9 @@ class FrostMatrixV3(nn.Module):
             nn.init.zeros_(layer.ln2.bias)
 
         # Output heads — near-zero init so initial policy is near-uniform
-        nn.init.normal_(self.policy_W.weight, std=0.01)
-        nn.init.normal_(self.value_W.weight,  std=0.01)
+        nn.init.normal_(self.policy_from_W.weight, std=0.01)
+        nn.init.normal_(self.policy_to_W.weight,   std=0.01)
+        nn.init.normal_(self.value_W.weight,       std=0.01)
         nn.init.zeros_(self.value_W.bias)
 
     def build_family_axis(self, B: int, device: torch.device,
@@ -771,11 +842,12 @@ class FrostMatrixV3(nn.Module):
         board_tokens: torch.Tensor,   # [B, 64] — piece type indices
         family_id:    torch.Tensor,   # [B] — opening family index (not used as direct input)
         geo_vecs:     torch.Tensor,   # [B, 64, N_GEO_CHANNELS]
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Returns:
-          policy_logits: [B, VOCAB_SIZE]
-          value:         [B] — tanh output in [-1, 1]
+          policy_from_logits: [B, 64] — from-square prediction
+          policy_to_logits:   [B, 64] — to-square prediction
+          value:              [B] — tanh output in [-1, 1]
         """
         B      = board_tokens.size(0)
         device = board_tokens.device
@@ -789,9 +861,11 @@ class FrostMatrixV3(nn.Module):
         pos_ids = torch.arange(64, device=device)
         board_x = board_x + self.board_pos_embed(pos_ids)   # [B, 64, D]
 
-        # ── Step 3: Project FrostMatrix geometry into board tokens ─────────────
-        geo_proj = torch.tanh(self.geo_proj(geo_vecs))   # [B, 64, D]
-        board_x  = board_x + geo_proj
+        # ── Step 3: FrostMatrix geometry — DISABLED (destroys 84%→27% accuracy) ──
+        # Previously: geo_proj = torch.tanh(self.geo_proj(geo_vecs)); board_x += geo_proj
+        # Adding same D_MODEL vector to all 64 squares creates a global bias that
+        # overwhelms per-square piece+position signal. Geometry encoding should be
+        # applied to the family axis, not the board tokens.
 
         # ── Step 4: Highway attention over family axis (3 directions) ─────────
         hw_delta = self.highway(fam_x)              # [B, 65, D]
@@ -808,31 +882,39 @@ class FrostMatrixV3(nn.Module):
             x = layer(x)
 
         # ── Step 8: Policy + value heads ──────────────────────────────────────
-        # Pool first board token (position N_FAM_NODES in full sequence)
-        board_repr = x[:, N_FAM_NODES, :]           # [B, D] — first board token
+        # Mean pool over all 64 board tokens (not just the first one)
+        board_repr = x[:, N_FAM_NODES:, :].mean(dim=1)   # [B, D]
 
-        policy_logits = self.policy_W(board_repr)    # [B, VOCAB_SIZE]
-        value         = torch.tanh(self.value_W(board_repr).squeeze(-1))   # [B]
+        policy_from_logits = self.policy_from_W(board_repr)   # [B, 64]
+        policy_to_logits   = self.policy_to_W(board_repr)     # [B, 64]
+        value = torch.tanh(self.value_W(board_repr).squeeze(-1))   # [B]
 
-        return policy_logits, value
+        return policy_from_logits, policy_to_logits, value
 
 
 # ─── Loss function ────────────────────────────────────────────────────────────
 
 def compute_loss(
-    policy_logits: torch.Tensor,   # [B, VOCAB_SIZE]
-    value:         torch.Tensor,   # [B]
-    move_idx:      torch.Tensor,   # [B] long
-    outcome:       torch.Tensor,   # [B] float in {-1, 0, 1}
+    policy_from_logits: torch.Tensor,   # [B, 64]
+    policy_to_logits:   torch.Tensor,   # [B, 64]
+    value:              torch.Tensor,   # [B]
+    from_idx:           torch.Tensor,   # [B] long
+    to_idx:             torch.Tensor,   # [B] long
+    outcome:            torch.Tensor,   # [B] float in {-1, 0, 1}
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Returns (total_loss, policy_loss, value_loss).
-    Total = policy_loss + 0.5 * value_loss
+    Total = policy_loss + 0.1 * value_loss
     """
     # Label smoothing prevents overconfident wrong predictions (ε=0.1)
-    policy_loss = F.cross_entropy(policy_logits, move_idx, label_smoothing=0.1)
+    policy_loss = (
+        F.cross_entropy(policy_from_logits, from_idx, label_smoothing=0.1) +
+        F.cross_entropy(policy_to_logits, to_idx, label_smoothing=0.1)
+    )
     value_loss  = F.mse_loss(value, outcome)
-    total_loss  = policy_loss + 0.5 * value_loss
+    # Value weight kept small — the policy gradient is now 1/64 per class (vs 1/4096 before),
+    # giving ~1:1 gradient ratio with value MSE.
+    total_loss  = policy_loss + 0.1 * value_loss
     return total_loss, policy_loss, value_loss
 
 
@@ -890,10 +972,11 @@ def export_weights(model: FrostMatrixV3, export_dir: str) -> None:
         save_tensor(f"ln2_w[{l}]",     layer.ln2.weight)
         save_tensor(f"ln2_b[{l}]",     layer.ln2.bias)
 
-    # ── Output heads ──────────────────────────────────────────────────────────
-    save_tensor("policy_W", model.policy_W.weight)   # [VOCAB_SIZE × D_MODEL]
-    save_tensor("value_W",  model.value_W.weight)    # [1 × D_MODEL]
-    save_tensor("value_b",  model.value_W.bias)      # [1]
+    # ── Output heads (split policy: from + to) ─────────────────────────────────
+    save_tensor("policy_from_W", model.policy_from_W.weight)   # [64 × D_MODEL]
+    save_tensor("policy_to_W",   model.policy_to_W.weight)     # [64 × D_MODEL]
+    save_tensor("value_W",       model.value_W.weight)         # [1 × D_MODEL]
+    save_tensor("value_b",       model.value_W.bias)           # [1]
 
     # ── Family axis weights ────────────────────────────────────────────────────
     save_tensor("fax/family_embed",   model.family_embed.weight)   # [N_FAMILIES × D_MODEL]
@@ -1034,7 +1117,7 @@ def train(args: argparse.Namespace) -> None:
         _log_f.write(json.dumps(record) + "\n")
 
     print(f"[log] telemetry → {log_path}")
-    print(f"[vocab] deterministic from_sq*64+to_sq encoding, POLICY_SIZE={VOCAB_SIZE}")
+    print(f"[vocab] split policy head: from_sq [64] + to_sq [64] = 4096 effective moves")
 
     # ── Model ──────────────────────────────────────────────────────────────────
     model = FrostMatrixV3().to(device)
@@ -1049,10 +1132,10 @@ def train(args: argparse.Namespace) -> None:
         betas=(0.9, 0.999),
         eps=1e-8,
     )
-    scaler = GradScaler(enabled=(device.type == "cuda"))
+    scaler = GradScaler(enabled=False)  # fp16 AMP disabled — custom attention breaks in half precision
 
     # Linear warmup for first WARMUP_STEPS steps, then constant lr
-    WARMUP_STEPS = 2000
+    WARMUP_STEPS = 1000
     scheduler = torch.optim.lr_scheduler.LambdaLR(
         optimizer, lr_lambda=lambda step: min(1.0, (step + 1) / WARMUP_STEPS)
     )
@@ -1075,31 +1158,52 @@ def train(args: argparse.Namespace) -> None:
         print("[ckpt] starting from scratch")
 
     # ── Dataset + DataLoader ───────────────────────────────────────────────────
-    def make_dataset(epoch_num: int) -> FrostMatrixDataset:
-        return FrostMatrixDataset(args.data, max_samples=args.max_samples)
+    # Prefer preprocessed .pt tensors (50x faster than JSONL streaming).
+    # Falls back to JSONL IterableDataset if .pt file doesn't exist.
+    preprocessed_path = getattr(args, 'preprocessed', None) or DEFAULT_PREPROCESSED_PATH
+    use_preprocessed = os.path.exists(preprocessed_path)
 
-    def collate_fn(batch):
-        board_tokens = torch.stack([b[0] for b in batch])   # [B, 64]
-        family_ids   = torch.stack([b[1] for b in batch])   # [B]
-        geo_vecs     = torch.stack([b[2] for b in batch])   # [B, 64, 55]
-        move_idxs    = torch.stack([b[3] for b in batch])   # [B]
-        outcomes     = torch.stack([b[4] for b in batch])   # [B]
-        return board_tokens, family_ids, geo_vecs, move_idxs, outcomes
+    if use_preprocessed:
+        print(f"[data] using preprocessed tensors: {preprocessed_path}")
+        dataset = PreprocessedFrostMatrixDataset(preprocessed_path, max_samples=args.max_samples)
+        dataloader = DataLoader(
+            dataset,
+            batch_size=BATCH_SIZE,
+            shuffle=True,
+            num_workers=4,
+            pin_memory=(device.type == "cuda"),
+            drop_last=True,
+            prefetch_factor=2,
+        )
+        # Single dataset — iterate with epochs
+        n_epochs = args.epochs
+        def epoch_dataloaders():
+            for _ in range(n_epochs):
+                yield dataloader
+    else:
+        print(f"[data] streaming JSONL: {args.data} (preprocessed .pt not found, run preprocess_frostmatrix_v3.py)")
+        def make_dataset(epoch_num: int) -> FrostMatrixDataset:
+            return FrostMatrixDataset(args.data, max_samples=args.max_samples)
+        n_epochs = args.epochs
+        def epoch_dataloaders():
+            for epoch in range(n_epochs):
+                ds = make_dataset(epoch)
+                yield DataLoader(
+                    ds,
+                    batch_size=BATCH_SIZE,
+                    collate_fn=collate_fn,
+                    num_workers=0,
+                    pin_memory=(device.type == "cuda"),
+                )
 
     # ── Training loop ──────────────────────────────────────────────────────────
     global_step = start_step
     model.train()
 
-    for epoch in range(start_epoch, args.epochs):
-        dataset    = make_dataset(epoch)
-        dataloader = DataLoader(
-            dataset,
-            batch_size=BATCH_SIZE,
-            collate_fn=collate_fn,
-            num_workers=4,
-            pin_memory=(device.type == "cuda"),
-            prefetch_factor=2,
-        )
+    for epoch_idx, dataloader in enumerate(epoch_dataloaders()):
+        epoch_num = start_epoch + epoch_idx
+        if epoch_num >= args.epochs:
+            break
 
         epoch_policy_loss = 0.0
         epoch_value_loss  = 0.0
@@ -1108,20 +1212,21 @@ def train(args: argparse.Namespace) -> None:
         t_start           = time.time()
 
         for batch in dataloader:
-            board_tokens, family_ids, geo_vecs, move_idxs, outcomes = batch
+            board_tokens, family_ids, geo_vecs, move_froms, move_tos, outcomes = batch
 
             board_tokens = board_tokens.to(device, non_blocking=True)
             family_ids   = family_ids.to(device, non_blocking=True)
             geo_vecs     = geo_vecs.to(device, non_blocking=True)
-            move_idxs    = move_idxs.to(device, non_blocking=True)
+            move_froms   = move_froms.to(device, non_blocking=True)
+            move_tos     = move_tos.to(device, non_blocking=True)
             outcomes     = outcomes.to(device, non_blocking=True)
 
             optimizer.zero_grad(set_to_none=True)
 
-            with autocast(enabled=(device.type == "cuda")):
-                policy_logits, value = model(board_tokens, family_ids, geo_vecs)
+            with autocast(enabled=False):  # fp16 disabled — custom attention breaks in half precision
+                policy_from_logits, policy_to_logits, value = model(board_tokens, family_ids, geo_vecs)
                 total_loss, policy_loss, value_loss = compute_loss(
-                    policy_logits, value, move_idxs, outcomes
+                    policy_from_logits, policy_to_logits, value, move_froms, move_tos, outcomes
                 )
 
             scaler.scale(total_loss).backward()
@@ -1129,6 +1234,8 @@ def train(args: argparse.Namespace) -> None:
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             scaler.step(optimizer)
             scaler.update()
+            # scheduler.step() MUST come AFTER scaler.step(optimizer),
+            # otherwise the first LR value is skipped and warmup is broken.
             scheduler.step()
 
             _step_total  = total_loss.item()
@@ -1143,15 +1250,21 @@ def train(args: argparse.Namespace) -> None:
 
             # ── JSONL telemetry — every 10 steps ─────────────────────────────
             if global_step % 10 == 0:
+                # Compute top-1 accuracy for diagnostic
+                with torch.no_grad():
+                    from_correct = (policy_from_logits.float().argmax(1) == move_froms).float().mean().item()
+                    to_correct   = (policy_to_logits.float().argmax(1) == move_tos).float().mean().item()
                 log_step({
                     "event": "step",
                     "step": global_step,
-                    "epoch": epoch + 1,
+                    "epoch": epoch_num + 1,
                     "loss": _step_total,
                     "policy_loss": _step_policy,
                     "value_loss": _step_value,
                     "lr": scheduler.get_last_lr()[0],
                     "steps_per_sec": epoch_steps / max(time.time() - t_start, 1e-6),
+                    "from_acc": from_correct,
+                    "to_acc": to_correct,
                 })
 
             # ── Log every 100 steps ───────────────────────────────────────────
@@ -1182,7 +1295,7 @@ def train(args: argparse.Namespace) -> None:
             if global_step % 1000 == 0:
                 ckpt_saved = save_checkpoint(
                     model, optimizer, scaler,
-                    global_step, epoch,
+                    global_step, epoch_num,
                     epoch_total_loss / epoch_steps,
                     ckpt_dir,
                 )
@@ -1197,7 +1310,7 @@ def train(args: argparse.Namespace) -> None:
         avg_value  = epoch_value_loss  / max(epoch_steps, 1)
         elapsed    = time.time() - t_start
         print(
-            f"\n[epoch] {epoch+1}/{args.epochs} complete — "
+            f"\n[epoch] {epoch_num+1}/{args.epochs} complete — "
             f"steps={epoch_steps:,} loss={avg_total:.4f} "
             f"policy={avg_policy:.4f} value={avg_value:.4f} "
             f"time={elapsed:.1f}s\n"
@@ -1206,14 +1319,14 @@ def train(args: argparse.Namespace) -> None:
         # Save end-of-epoch checkpoint
         ckpt_saved = save_checkpoint(
             model, optimizer, scaler,
-            global_step, epoch + 1,
+            global_step, epoch_num + 1,
             avg_total,
             ckpt_dir,
         )
         print(f"[ckpt] end-of-epoch checkpoint → {ckpt_saved}")
         log_step({
             "event": "epoch_end",
-            "epoch": epoch + 1,
+            "epoch": epoch_num + 1,
             "total_steps": global_step,
             "epoch_steps": epoch_steps,
             "avg_loss": avg_total,
@@ -1224,7 +1337,7 @@ def train(args: argparse.Namespace) -> None:
         })
 
         if _time_done:
-            print(f"[time-limit] budget exhausted after epoch {epoch+1} — stopping", flush=True)
+            print(f"[time-limit] budget exhausted after epoch {epoch_num+1} — stopping", flush=True)
             break
 
     # ── Export weights after training ──────────────────────────────────────────

@@ -162,6 +162,12 @@ function buildSidecarRow(row, rootRows, rootIndexInGroup, sourceBridgePath, gene
   const relationScore = round(rankGradient);
   const contortionScore = round(clamp((scoreGapNorm + rankNorm + risk + (1 - lockIn)) / 4, 0, 1));
   const uncertaintyScore = round(clamp(0.45 * (1 - pathProbability) + 0.35 * risk + 0.2 * scoreGapNorm, 0, 1));
+  // Shannon entropy from the policy distribution — orthogonal to score-based uncertainty
+  const policyEntropy = asNumber(frontier.rayfrontMetrics?.policyEntropyNormalized) || null;
+  // Blend: when policy entropy is available, replace path probability component with it
+  const uncertaintyEntropy = policyEntropy != null
+    ? round(clamp(0.45 * policyEntropy + 0.35 * risk + 0.2 * scoreGapNorm, 0, 1))
+    : null;
   const z = [
     round(tau),
     round(pathProbability),
@@ -237,6 +243,8 @@ function buildSidecarRow(row, rootRows, rootIndexInGroup, sourceBridgePath, gene
     uncertainty: {
       score: uncertaintyScore,
       bucket: driftBucket(uncertaintyScore),
+      policyEntropy,
+      policyEntropyScore: uncertaintyEntropy,
     },
     eventHorizon: {
       bucket: horizonBucket(rank, rootWidth, uncertaintyScore),

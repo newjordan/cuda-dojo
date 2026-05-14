@@ -1,32 +1,22 @@
 /* ═══════════════════════════════════════════════════════════════════════════
- * VOCAB_SIZE PATCH REQUIRED — see docs/VOCAB_SIZE_PATCH.md
+ * VOCAB_SIZE PATCH — UPDATED for split policy heads (from_sq + to_sq)
  *
- * CURRENT (WRONG):
- *   #define VOCAB_SIZE  513   // "13 piece types + 500 opening family IDs"
+ * ARCHITECTURE:
+ *   token_embed: [PIECE_VOCAB_SIZE=13 × D_MODEL=128]    — board piece type tokens
+ *   policy_from_W: [D_MODEL=128 × 64]                    — from-square classifier
+ *   policy_to_W:   [D_MODEL=128 × 64]                    — to-square classifier
+ *   value_W:       [D_MODEL=128 × 1]                     — position value (-1..1)
  *
- * PROBLEMS:
- *   1. The opening vocab has 8,463 entries (not 500).
- *   2. In V3 the opening context is handled by the 65-node family axis via
- *      fax.family_embed[N_FAMILIES=33] and fax.unknown_embed[N_UNKNOWNS=32].
- *      Those weights are NOT looked up via token_embed — the opening family IDs
- *      do not need to be in the input embedding table at all.
- *   3. token_embed only embeds board-square piece-type tokens (0–12) = 13 rows.
- *   4. policy_W (output head) should cover the move target space (4,096 entries
- *      for from_sq*64+to_sq), not the input embedding size.
+ * The old flat 4096-way policy head has been replaced with two independent
+ * 64-way classifiers. Each square gets its own softmax, giving 64× denser
+ * gradient per class (each square appears in ~1/64 of samples vs ~1/4096).
  *
- * CORRECT REPLACEMENT (replace the single VOCAB_SIZE define with three):
- *   #define PIECE_VOCAB_SIZE    13    // token_embed rows — piece types (0–12)
- *   #define OPENING_VOCAB_SIZE  8463  // opening_branch_vocab.json entry count
- *   #define POLICY_OUT_SIZE     4096  // policy_W cols — from*64+to move space
+ *   Effective move space: 64 × 64 = 4096 (unchanged)
+ *   Policy output:        from_logits [B, 64] + to_logits [B, 64]
  *
- * USAGES TO UPDATE (4 call sites — see docs/VOCAB_SIZE_PATCH.md for table):
- *   alloc_weights(VOCAB_SIZE * D_MODEL)         → PIECE_VOCAB_SIZE
- *   alloc_weights(D_MODEL * VOCAB_SIZE)         → POLICY_OUT_SIZE
- *   cudaMalloc(batch*VOCAB_SIZE*sizeof(float))  → POLICY_OUT_SIZE
- *   cublasSgemm(…VOCAB_SIZE, batch…)            → POLICY_OUT_SIZE
- *
- * DO NOT apply this patch without simultaneously updating the training loop
- * to produce policy targets in [0, 4095] (from_sq*64+to_sq).
+ * This matches the Python model in train_v3_frostmatrix.py:
+ *   policy_from_W.weight → [64, 128] → saved as policy_from_W.bin
+ *   policy_to_W.weight   → [64, 128] → saved as policy_to_W.bin
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /*
@@ -90,8 +80,8 @@
 #define N_HEADS         4
 #define N_LAYERS        4
 #define D_FFN           341   // SwiGLU reduced FFN (same as v2)
-#define PIECE_VOCAB_SIZE  13    // token_embed rows — piece types 0..12
-#define POLICY_SIZE     4096  // 64*64 move policy surface (from_sq*64+to_sq)
+#define PIECE_VOCAB_SIZE  13      // token_embed rows — piece types 0..12
+#define POLICY_OUT_DIM   64      // from_sq/to_sq classification (64 squares each)
 
 // Highway-specific
 #define N_HW_DIRS       3     // lateral, vertical, diagonal
@@ -154,9 +144,12 @@ struct TransformerWeights {
     float *ffn_up[N_LAYERS], *ffn_gate[N_LAYERS], *ffn_down[N_LAYERS];
     float *ln1_w[N_LAYERS], *ln1_b[N_LAYERS];
     float *ln2_w[N_LAYERS], *ln2_b[N_LAYERS];
-    // Output heads
-    float *policy_W;   // [D_MODEL × POLICY_SIZE]
-    float *value_W;    // [D_MODEL × 1]
+    // Output heads — split policy (from_sq + to_sq, each 64-way)
+    // Mirrors Python train_v3_frostmatrix.py: policy_from_W [64, D_MODEL], policy_to_W [64, D_MODEL]
+    // Stored column-major in cuBLAS convention: [D_MODEL × 64]
+    float *policy_from_W; // [D_MODEL × 64]
+    float *policy_to_W;   // [D_MODEL × 64]
+    float *value_W;       // [D_MODEL × 1]
     float *value_b;
     // Family axis weights
     FamilyAxisWeights fax;
@@ -177,8 +170,9 @@ struct ForwardBuffers {
     float *ca_k, *ca_v, *ca_out;
     int   *canon_pos;   // [BATCH × SEQ_LEN_V3] — fold positions for board tokens
     float *geo_embed;   // [BATCH × N_BOARD_SQ × D_MODEL] — geometry projection
-    float *pooled;      // [BATCH × D_MODEL] — pooled board representation for heads
-    float *policy_logits;
+    float *pooled;           // [BATCH × D_MODEL] — pooled board representation for heads
+    float *policy_from_logits; // [BATCH × 64] — from-square policy logits
+    float *policy_to_logits;   // [BATCH × 64] — to-square policy logits
     float *value_out;
 };
 
@@ -268,9 +262,11 @@ void init_weights(TransformerWeights *tw, float *frostmatrix_centroids_cpu) {
         tw->ln2_b[l]    = alloc_weights(D_MODEL, 0.0f);
     }
 
-    tw->policy_W = alloc_weights(D_MODEL * POLICY_SIZE, s_e);
-    tw->value_W  = alloc_weights(D_MODEL, s_e);
-    tw->value_b  = alloc_weights(1, 0.0f);
+    // Split policy heads — each 64-way classification
+    tw->policy_from_W = alloc_weights(D_MODEL * POLICY_OUT_DIM, s_e);  // [128, 64]
+    tw->policy_to_W   = alloc_weights(D_MODEL * POLICY_OUT_DIM, s_e);  // [128, 64]
+    tw->value_W       = alloc_weights(D_MODEL, s_e);
+    tw->value_b       = alloc_weights(1, 0.0f);
 
     // Family axis weights
     FamilyAxisWeights &fax = tw->fax;
@@ -317,7 +313,8 @@ void alloc_buffers(ForwardBuffers *buf, int batch) {
     CUDA_CHECK(cudaMalloc(&buf->canon_pos,batch*SEQ_LEN_V3*sizeof(int)));
     CUDA_CHECK(cudaMalloc(&buf->geo_embed,batch*N_BOARD_SQ*D_MODEL*sizeof(float)));
     CUDA_CHECK(cudaMalloc(&buf->pooled, batch*D_MODEL*sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&buf->policy_logits, batch*POLICY_SIZE*sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&buf->policy_from_logits, batch*POLICY_OUT_DIM*sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&buf->policy_to_logits,   batch*POLICY_OUT_DIM*sizeof(float)));
     CUDA_CHECK(cudaMalloc(&buf->value_out,     batch*sizeof(float)));
 }
 
@@ -902,14 +899,22 @@ void forward(
         residual_add_kernel<<<(n_res+255)/256, 256>>>(buf->x, buf->attn_out, n_res);
     }
 
-    // ── Step 7: Policy + value heads ──────────────────────────────────────
+    // ── Step 7: Split policy heads (from_sq + to_sq) + value head ────────────
     mean_pool_board_kernel<<<batch, D>>>(buf->pooled, buf->x, batch);
+    // from-square policy: pool @ policy_from_W → [batch, 64]
     CUBLAS_CHECK(cublasSgemm(cublas, CUBLAS_OP_T, CUBLAS_OP_N,
-        POLICY_SIZE, batch, D, &one,
-        tw->policy_W, D,
+        POLICY_OUT_DIM, batch, D, &one,
+        tw->policy_from_W, D,
         buf->pooled, D,
-        &zero, buf->policy_logits, POLICY_SIZE));
-    softmax_kernel<<<batch, 32>>>(buf->policy_logits, batch, POLICY_SIZE);
+        &zero, buf->policy_from_logits, POLICY_OUT_DIM));
+    softmax_kernel<<<batch, 32>>>(buf->policy_from_logits, batch, POLICY_OUT_DIM);
+    // to-square policy: pool @ policy_to_W → [batch, 64]
+    CUBLAS_CHECK(cublasSgemm(cublas, CUBLAS_OP_T, CUBLAS_OP_N,
+        POLICY_OUT_DIM, batch, D, &one,
+        tw->policy_to_W, D,
+        buf->pooled, D,
+        &zero, buf->policy_to_logits, POLICY_OUT_DIM));
+    softmax_kernel<<<batch, 32>>>(buf->policy_to_logits, batch, POLICY_OUT_DIM);
     value_head_kernel<<<(batch + 255) / 256, 256>>>(
         buf->pooled, tw->value_W, tw->value_b, buf->value_out, batch);
 }

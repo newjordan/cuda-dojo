@@ -31,6 +31,12 @@
 
 #include "generated/dojo_active_fighter_legacy.h"
 
+// Optional FrostMatrix neural network evaluator
+// Compile with: nvcc -DUSE_FROSTMATRIX_EVAL gpu_forge.cu -o gpu_forge -lcublas
+#ifdef USE_FROSTMATRIX_EVAL
+#include "frostmatrix_eval.cuh"
+#endif
+
 #define MAX_POSITIONS 10000
 #define MAX_FEN_LEN 128
 #define MAX_MOVE_LEN 8
@@ -2277,6 +2283,16 @@ int main(int argc, char** argv) {
       emitAllPositions = 1;
       continue;
     }
+    // --- FrostMatrix eval backend ---
+    if (strcmp(argv[i], "--frostmatrix-weights") == 0 && i + 1 < argc) {
+      const char *fm_path = argv[++i];
+      #ifdef USE_FROSTMATRIX_EVAL
+      frostmatrix_init(fm_path);
+      #else
+      fprintf(stderr, "[gpu_forge] FrostMatrix eval not compiled in (rebuild with -DUSE_FROSTMATRIX_EVAL)\n");
+      #endif
+      continue;
+    }
     if (argv[i][0] == '-') continue;
     if (positional == 0) numConfigs = atoi(argv[i]);
     positional++;
@@ -2348,6 +2364,33 @@ int main(int argc, char** argv) {
   if (traincarBook) fprintf(stderr, "[dojo] traincar book: enabled (%d entries)\n", traincarBookCount);
   if (emitAllPositions) fprintf(stderr, "[dojo] emit-all positions: enabled\n");
   if (ffnPolicyEnabled) fprintf(stderr, "[dojo] ffn policy residual: enabled (%s)\n", ffnPolicyPath);
+
+  // --- FrostMatrix root evaluation (host-side, before search launch) ---
+  int fmEnabled = 0;
+  float fmRootValue = 0.0f;
+  float fmRootPolicy[4096];  // from*64+to flat policy surface
+  memset(fmRootPolicy, 0, sizeof(fmRootPolicy));
+  #ifdef USE_FROSTMATRIX_EVAL
+  if (frostmatrix_available()) {
+    fmEnabled = 1;
+    fprintf(stderr, "[dojo] FrostMatrix eval: enabled\n");
+    // Run a quick single-board eval to warm up the pipeline
+    int startPieces[64];
+    memset(startPieces, 0, sizeof(startPieces));
+    // Starting position: white pieces on ranks 0-1, black on 6-7
+    const int startSetup[64] = {
+      9,7,10,11,13,10,7,9,   // black back rank
+      8,8,8,8,8,8,8,8,       // black pawns
+      0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+      1,1,1,1,1,1,1,1,       // white pawns
+      2,3,4,5,6,4,3,2,       // white back rank
+    };
+    memcpy(startPieces, startSetup, 64 * sizeof(int));
+    fmRootValue = frostmatrix_single_eval(startPieces, 0);  // white to move
+    fprintf(stderr, "[dojo] FrostMatrix startpos value: %.4f\n", fmRootValue);
+  }
+  #endif
 
   // Upload fighter knobs to constant memory for search evaluation
   cudaMemcpyToSymbol(C_FIGHTER_KNOBS, defaults, KNOB_COUNT * sizeof(float));

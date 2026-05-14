@@ -221,6 +221,14 @@ function buildRows(probe, run, options) {
         rootOrderScoreCp: scoreCp,
         scoreGapFromBestCp: round(gapCp, 3),
         softmaxTemperatureCp: options.temperatureCp,
+        // Shannon entropy placeholder — filled by enrich_frontier_policy_entropy.mjs
+        // Once FrostMatrix is integrated into gpu_forge.cu, computed from actual
+        // from_logits/to_logits policy head distributions.
+        policyEntropy: null,
+        policyEntropyNormalized: null,
+        policyEntropyMax: null,
+        policyEntropySource: null,
+        winConfidence: null,
         schedulerFrontierSeeded: Number(runtime.scheduler_frontier_seeded || 0),
         schedulerFrontierPops: Number(runtime.scheduler_frontier_pops || 0),
         schedulerEvalRequests: Number(runtime.scheduler_eval_requests || 0),
