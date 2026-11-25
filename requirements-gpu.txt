@@ -1,0 +1,4 @@
+# Optional. Training and the GPU neural-net comparison.
+# The CPU CI runner does not install this file.
+-r requirements.txt
+torch==2.15.0

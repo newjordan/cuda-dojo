@@ -4,7 +4,13 @@
   "description": "Public GPU chess research repo focused on CUDA engine architecture, oracle baselines, and training loops.",
   "type": "module",
   "private": false,
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
+    "test": "python3 -m pytest -q -rs",
+    "test:host": "make -C cuda/engine host-test",
+    "test:gpu": "python3 -m pytest -q -m gpu",
     "oracle:sigma": "make -C cuda oracle_sigma_smoke",
     "oracle:probe": "make -C cuda oracle_sigma_probe"
   },
