@@ -1,0 +1,6 @@
+# CPU measurement harness and the pytest suite.
+# Installed by GitHub Actions. CUDA training dependencies are in
+# requirements-gpu.txt and are not installed on the CPU runner.
+chess==1.11.2
+numpy==2.5.5
+pytest==9.2.0

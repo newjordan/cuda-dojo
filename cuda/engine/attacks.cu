@@ -10,9 +10,13 @@
 
 namespace engine {
 
-// Public constant-memory tables (other .cu files can reference these).
+// Device constant-memory tables. is_square_attacked does not read them;
+// host and device both use the on-stack copies below. The tables stay in
+// the nvcc build only, so a host compiler never sees __constant__.
+#if defined(__CUDACC__)
 __constant__ int d_KNIGHT_OFFSETS[8] = {-17, -15, -10, -6, 6, 10, 15, 17};
 __constant__ int d_KING_OFFSETS[8]   = { -9,  -8,  -7, -1, 1,  7,  8,  9};
+#endif
 
 // Private helper: absolute value usable on host and device.
 __host__ __device__ static inline int abs_i(int x) { return x < 0 ? -x : x; }

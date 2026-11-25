@@ -1,4 +1,6 @@
 node_modules/
+.venv/
+.pytest_cache/
 __pycache__/
 *.pyc
 *.o
@@ -12,7 +14,9 @@ cuda/engine/__pycache__/
 cuda/__pycache__/
 cuda/engine/engine
 cuda/engine/engine_test_perft
+cuda/engine/engine_test_perft_host
 cuda/engine/tests/test_makeunmake_symmetry
+cuda/engine/tests/test_makeunmake_symmetry_host
 cuda/engine/tests/test_tt
 cuda/engine/tests/test_zobrist
 cuda/engine/*.o

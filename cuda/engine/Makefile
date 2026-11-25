@@ -125,9 +125,29 @@ engine_test: tests/test_zobrist tests/test_tt
 	./tests/test_zobrist
 	./tests/test_tt
 
+# Host C++ build of the move generator and its perft / make-unmake tests.
+# Same sources as the nvcc objects. Device search, the transposition table,
+# and eval are not linked here. `make all` / `make engine` are unchanged.
+HOST_CXX      ?= g++
+HOST_CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wno-unused-function -I.
+HOST_SRCS      = movegen.cu make_unmake.cu attacks.cu
+
+engine_test_perft_host: tests/test_perft.cu $(HOST_SRCS) $(ENGINE_HDRS) host_compat.h
+	$(HOST_CXX) $(HOST_CXXFLAGS) -x c++ tests/test_perft.cu $(HOST_SRCS) -o $@
+
+tests/test_makeunmake_symmetry_host: tests/test_makeunmake_symmetry.cu $(HOST_SRCS) $(ENGINE_HDRS) host_compat.h
+	$(HOST_CXX) $(HOST_CXXFLAGS) -x c++ tests/test_makeunmake_symmetry.cu $(HOST_SRCS) -o $@
+
+host: engine_test_perft_host tests/test_makeunmake_symmetry_host
+
+host-test: host
+	./engine_test_perft_host
+	./tests/test_makeunmake_symmetry_host
+
 clean:
 	rm -f uci_test_engine engine engine_main.o uci_engine.o search.o time.o \
 	      zobrist.o tt.o tests/test_zobrist tests/test_tt $(ENGINE_OBJS) \
-	      $(LIB_NAME) engine_test_perft tests/test_makeunmake_symmetry
+	      $(LIB_NAME) engine_test_perft tests/test_makeunmake_symmetry \
+	      engine_test_perft_host tests/test_makeunmake_symmetry_host
 
-.PHONY: all engine uci_test arena_gpu_smoke arena_smoke engine_verify_long skeleton_test clean engine_test test_zobrist test_tt
+.PHONY: all engine uci_test arena_gpu_smoke arena_smoke engine_verify_long skeleton_test clean engine_test test_zobrist test_tt host host-test

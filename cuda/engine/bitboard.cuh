@@ -10,7 +10,11 @@
 #define ENGINE_BITBOARD_CUH
 
 #include <stdint.h>
+#if defined(__CUDACC__)
 #include <cuda_runtime.h>
+#else
+#include "host_compat.h"
+#endif
 
 namespace engine {
 
